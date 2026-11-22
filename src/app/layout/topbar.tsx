@@ -25,9 +25,11 @@ import { useToast } from '@/shared/ui/toast';
 export function Topbar({
   onOpenMenu,
   onOpenSearch,
+  collapsed,
 }: {
   onOpenMenu: () => void;
   onOpenSearch: () => void;
+  collapsed: boolean;
 }) {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
@@ -72,7 +74,12 @@ export function Topbar({
   const nameParts = (user?.name ?? '').split(' ');
 
   return (
-    <header className="app-topbar no-print sticky top-0 z-30 flex h-14 items-center gap-3 bg-bg px-4 lg:px-6">
+    <header
+      className={cn(
+        'app-topbar no-print fixed inset-x-0 top-0 z-30 flex h-14 items-center gap-3 bg-bg px-4 transition-[left] duration-150 lg:px-6',
+        collapsed ? 'lg:left-[64px]' : 'lg:left-[232px]',
+      )}
+    >
       <Button variant="ghost" size="icon-sm" className="lg:hidden" onClick={onOpenMenu} aria-label="Открыть меню">
         <Menu />
       </Button>

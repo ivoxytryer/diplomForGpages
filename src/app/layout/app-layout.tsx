@@ -52,11 +52,15 @@ export function AppLayout() {
 
       <div
         className={cn(
-          'flex min-h-dvh flex-col transition-[padding] duration-150',
+          'flex min-h-dvh flex-col pt-14 transition-[padding] duration-150',
           collapsed ? 'lg:pl-[64px]' : 'lg:pl-[232px]',
         )}
       >
-        <Topbar onOpenMenu={() => setMobileOpen(true)} onOpenSearch={() => setPaletteOpen(true)} />
+        <Topbar
+          collapsed={collapsed}
+          onOpenMenu={() => setMobileOpen(true)}
+          onOpenSearch={() => setPaletteOpen(true)}
+        />
         <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 lg:p-6">
           <Suspense
             fallback={

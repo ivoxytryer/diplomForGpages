@@ -236,17 +236,6 @@
   animation: slide-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Не даём контенту и фону показываться над липкой шапкой при мобильном скролле. */
-.app-topbar::before {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  bottom: 100%;
-  height: 64px;
-  background: var(--bg);
-  pointer-events: none;
-}
-
 .recharts-default-tooltip {
   border-radius: 0 !important;
   border: 1px solid var(--border) !important;
