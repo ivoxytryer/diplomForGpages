@@ -574,15 +574,26 @@ export function ReportsPage() {
               <Table>
                 <THead>
                   <tr>
-                    {table.columns.map((column) => (
-                      <TH key={column}>{column}</TH>
+                    {table.columns.map((column, columnIndex) => (
+                      <TH
+                        key={column}
+                        className={
+                          table.rows.some((row) => typeof row[columnIndex] === 'number')
+                            ? 'text-right'
+                            : undefined
+                        }
+                      >
+                        {column}
+                      </TH>
                     ))}
                   </tr>
                 </THead>
                 <TBody>
                   {table.rows.length === 0 ? (
                     <tr>
-                      <TD className="text-xs text-muted">Нет данных</TD>
+                      <TD colSpan={table.columns.length} className="text-xs text-muted">
+                        Нет данных
+                      </TD>
                     </tr>
                   ) : (
                     table.rows.map((row, rowIndex) => (
