@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="940" viewBox="0 0 1800 940">
+<defs>
+  <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#6b7280"/></marker>
+  <marker id="arrow-green" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#4a7554"/></marker>
+  <marker id="arrow-red" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#a94f45"/></marker>
+  <marker id="arrow-accent" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#a9853f"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="60" y="55" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700" fill="#1f2937">Фрагмент доменной модели: кадры, время, проекты</text>
+<text x="60" y="88" font-family="Segoe UI, Arial, sans-serif" font-size="17" fill="#6b7280">Сущности и методы, влияющие на роли, архив и согласование отсутствий</text>
+<line x1="60" y1="110" x2="1740" y2="110" stroke="#e7e5e4" stroke-width="1.5"/>
+<g>
+  <rect x="60" y="140" width="420" height="160" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="82" y="158" width="376" height="128">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">User</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• id, email, role</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• employeeId</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• isActive, mustChangePassword</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• can(action)</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="60" y="390" width="420" height="185" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="82" y="408" width="376" height="153">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">Absence</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• employeeId, type</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• startDate, endDate</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• status</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• approve() / reject()</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• reopen() / isEditable()</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="60" y="660" width="420" height="140" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="82" y="678" width="376" height="108">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">TimesheetRow</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• employeeId, month</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• status, days, hours</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• approve()</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="620" y="390" width="460" height="210" rx="12" fill="#f5efe3" stroke="#a9853f" stroke-width="1.6"/>
+  <foreignObject x="642" y="408" width="416" height="178">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">Employee</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• id, ФИО, статус</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• hireDate, dismissalDate</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• salary, departmentId</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• archive() / restore()</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• isActive()</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="620" y="720" width="460" height="120" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="642" y="738" width="416" height="88">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">Department / Position</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• оргструктура и штатные единицы</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• руководитель, дочерние подразделения</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="1240" y="140" width="460" height="145" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="1262" y="158" width="416" height="113">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">Project</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• code, name, status</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• managerId</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• startDate / endDate</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="1240" y="390" width="460" height="165" rx="12" fill="#f5efe3" stroke="#a9853f" stroke-width="1.6"/>
+  <foreignObject x="1262" y="408" width="416" height="133">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">Assignment</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• projectId, employeeId</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• allocation</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• startDate / endDate, close()</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="1240" y="660" width="460" height="170" rx="12" fill="#f5efe3" stroke="#a9853f" stroke-width="1.6"/>
+  <foreignObject x="1262" y="678" width="416" height="138">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">ProjectTask</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• projectId, employeeId</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• dueDate, status</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• carryCount, carryHistory</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• reassign()</div>
+    </div>
+  </foreignObject>
+</g><line x1="480" y1="240" x2="620" y2="430" stroke="#6b7280" stroke-width="1.6"/><text x="508" y="258" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">1</text><text x="600" y="418" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">0..1</text><line x1="480" y1="480" x2="620" y2="480" stroke="#6b7280" stroke-width="1.6"/><text x="506" y="467" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">0..*</text><text x="598" y="470" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">1</text><line x1="480" y1="690" x2="620" y2="560" stroke="#6b7280" stroke-width="1.6"/><text x="508" y="680" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">0..*</text><text x="598" y="572" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">1</text><line x1="1080" y1="465" x2="1240" y2="465" stroke="#6b7280" stroke-width="1.6"/><text x="1104" y="452" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">1</text><text x="1216" y="452" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">0..*</text><line x1="1080" y1="570" x2="1240" y2="690" stroke="#6b7280" stroke-width="1.6"/><text x="1104" y="588" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">1</text><text x="1216" y="706" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">0..*</text><line x1="1470" y1="285" x2="1470" y2="390" stroke="#6b7280" stroke-width="1.6"/><text x="1452" y="308" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">1</text><text x="1452" y="380" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">0..*</text><line x1="1470" y1="555" x2="1470" y2="660" stroke="#6b7280" stroke-width="1.6"/><text x="1452" y="578" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">1</text><text x="1452" y="650" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">0..*</text><line x1="850" y1="600" x2="850" y2="720" stroke="#6b7280" stroke-width="1.6"/><text x="832" y="625" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">1</text><text x="832" y="706" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#6b7280" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">1</text><text x="60" y="916" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#9ca3af">НИР · HR-система · 18.11.2026</text>
+</svg>

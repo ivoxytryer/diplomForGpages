@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="760" viewBox="0 0 1800 760">
+<defs>
+  <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#6b7280"/></marker>
+  <marker id="arrow-green" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#4a7554"/></marker>
+  <marker id="arrow-red" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#a94f45"/></marker>
+  <marker id="arrow-accent" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#a9853f"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="60" y="55" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700" fill="#1f2937">Ролевая модель: минимальные привилегии</text>
+<text x="60" y="88" font-family="Segoe UI, Arial, sans-serif" font-size="17" fill="#6b7280">Кадровые, управленческие, финансовые и необратимые действия разделены</text>
+<line x1="60" y1="110" x2="1740" y2="110" stroke="#e7e5e4" stroke-width="1.5"/>
+<g>
+  <rect x="60" y="150" width="360" height="270" rx="12" fill="#f5efe3" stroke="#a9853f" stroke-width="1.6"/>
+  <foreignObject x="82" y="168" width="316" height="238">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:18px;font-weight:650;line-height:1.15;margin-bottom:6px;">admin · Администратор</div>
+      <div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ сотрудники: создать, изменить, удалить</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ увольнение и архив, восстановление</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ оклад и расчётные листы</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ пользователи, справочники, аудит</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ свой табель и своя заявка (self-approve)</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ вся область видимости</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="480" y="150" width="360" height="270" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="502" y="168" width="316" height="238">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:18px;font-weight:650;line-height:1.15;margin-bottom:6px;">hr · Кадровый специалист</div>
+      <div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ карточки и справочники</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ проекты и назначения</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ табель: просмотр + утверждение</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ отсутствия: согласование по иерархии</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ оклад и зарплата: только чтение</div><div style="margin-top:5px;color:#a94f45;font-size:14px;line-height:1.3;">— удаление и увольнение</div><div style="margin-top:5px;color:#a94f45;font-size:14px;line-height:1.3;">— правка отметок табеля</div><div style="margin-top:5px;color:#a94f45;font-size:14px;line-height:1.3;">— изменение оклада</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="900" y="150" width="360" height="270" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="922" y="168" width="316" height="238">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:18px;font-weight:650;line-height:1.15;margin-bottom:6px;">manager · Руководитель</div>
+      <div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ сотрудники своего подразделения</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ табель: правка + утверждение</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ отсутствия: согласование</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ проекты и задачи</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ оклад: только чтение</div><div style="margin-top:5px;color:#a94f45;font-size:14px;line-height:1.3;">— раздел «Зарплата»</div><div style="margin-top:5px;color:#a94f45;font-size:14px;line-height:1.3;">— админка и справочники</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="1320" y="150" width="360" height="270" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="1342" y="168" width="316" height="238">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:18px;font-weight:650;line-height:1.15;margin-bottom:6px;">employee · Сотрудник</div>
+      <div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ своя карточка и свой оклад</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ свои задачи и загрузка</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ свой табель</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ свои отсутствия</div><div style="margin-top:5px;color:#4a7554;font-size:14px;line-height:1.3;">✓ свои расчётные листы</div><div style="margin-top:5px;color:#a94f45;font-size:14px;line-height:1.3;">— чужие данные</div>
+    </div>
+  </foreignObject>
+</g><rect x="60" y="470" width="1680" height="230" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.5"/><text x="90" y="512" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="650" fill="#1f2937" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">Иерархия согласования отсутствий</text><text x="100" y="560" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">Сотрудник</text><text x="270" y="560" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#a9853f">→</text><text x="300" y="560" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">руководитель / HR / администратор</text><text x="100" y="590" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">Руководитель</text><text x="270" y="590" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#a9853f">→</text><text x="300" y="590" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">HR / администратор</text><text x="100" y="620" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">HR</text><text x="270" y="620" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#a9853f">→</text><text x="300" y="620" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">только администратор</text><text x="100" y="650" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600" fill="#1f2937" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">Администратор</text><text x="270" y="650" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#a9853f">→</text><text x="300" y="650" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">только сам (self-approve)</text><text x="100" y="680" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">Свой табель и свою заявку утверждает только администратор. HR и руководитель — только чужие.</text><text x="60" y="736" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#9ca3af">НИР · HR-система · 18.11.2026</text>
+</svg>

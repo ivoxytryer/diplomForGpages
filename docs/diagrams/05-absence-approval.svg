@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="880" viewBox="0 0 1800 880">
+<defs>
+  <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#6b7280"/></marker>
+  <marker id="arrow-green" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#4a7554"/></marker>
+  <marker id="arrow-red" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#a94f45"/></marker>
+  <marker id="arrow-accent" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 z" fill="#a9853f"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="60" y="55" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700" fill="#1f2937">Согласование отсутствия: без самоподтверждения</text>
+<text x="60" y="88" font-family="Segoe UI, Arial, sans-serif" font-size="17" fill="#6b7280">Заявку создаёт сам сотрудник; согласует вышестоящая роль; approved не редактируется напрямую</text>
+<line x1="60" y1="110" x2="1740" y2="110" stroke="#e7e5e4" stroke-width="1.5"/>
+<g>
+  <rect x="100" y="170" width="340" height="160" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="122" y="188" width="296" height="128">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">Создание заявки</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• сотрудник создаёт свою</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• HR и manager — только свою</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• admin — за любого</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="500" y="170" width="300" height="160" rx="12" fill="#f5efe3" stroke="#a9853f" stroke-width="1.6"/>
+  <foreignObject x="522" y="188" width="256" height="128">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">pending</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• заявка в очереди</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• проверка пересечений</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="900" y="170" width="320" height="160" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="922" y="188" width="276" height="128">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">Согласующий</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• роль выше заявителя</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• не своя заявка</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• иначе 403</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="500" y="430" width="300" height="150" rx="12" fill="#eef5ef" stroke="#4a7554" stroke-width="1.6"/>
+  <foreignObject x="522" y="448" width="256" height="118">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">approved</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• статус и табель обновлены</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• событие в ленте</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="900" y="430" width="300" height="150" rx="12" fill="#fbeeec" stroke="#a94f45" stroke-width="1.6"/>
+  <foreignObject x="922" y="448" width="256" height="118">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">rejected</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• история сохраняется</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• причина в карточке</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="1280" y="170" width="440" height="250" rx="12" fill="#faf9f7" stroke="#d6d3d1" stroke-width="1.6"/>
+  <foreignObject x="1302" y="188" width="396" height="218">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:19px;font-weight:650;line-height:1.15;margin-bottom:6px;">Иерархия согласования</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• employee → manager / HR / admin</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• manager → HR / admin</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• HR → admin</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• admin → только сам (self-approve)</div>
+    </div>
+  </foreignObject>
+</g><g>
+  <rect x="500" y="660" width="560" height="110" rx="12" fill="#eef5ef" stroke="#4a7554" stroke-width="1.6"/>
+  <foreignObject x="522" y="678" width="516" height="78">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
+      <div style="font-size:19px;font-weight:650;line-height:1.15;margin-bottom:6px;">После approved</div>
+      <div style="margin-top:5px;color:#4a7554;font-size:15px;line-height:1.3;">✓ PATCH и DELETE запрещены: заявка неизменяема</div><div style="margin-top:5px;color:#a9853f;font-size:15px;line-height:1.3;">! доступны только reopen (в pending) и reject</div>
+    </div>
+  </foreignObject>
+</g><line x1="440" y1="250" x2="500" y2="250" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/><line x1="800" y1="250" x2="900" y2="250" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/><line x1="1060" y1="250" x2="1280" y2="250" stroke="#a9853f" stroke-width="2" marker-end="url(#arrow-accent)"/><text x="1170.0" y="237" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#a9853f" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">кто?</text><path d="M 1060 330 L 1060 400 L 650 400 L 650 430" fill="none" stroke="#4a7554" stroke-width="2" marker-end="url(#arrow-green)"/><text x="860" y="388" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#4a7554" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">согласовано</text><line x1="1150" y1="330" x2="1060" y2="430" stroke="#a94f45" stroke-width="2" marker-end="url(#arrow-red)"/><text x="1148" y="382" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#a94f45" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">отклонено</text><path d="M 800 505 L 900 505" fill="none" stroke="#a94f45" stroke-width="2" marker-end="url(#arrow-red)"/><text x="850" y="492" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#a94f45" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">reject</text><path d="M 500 505 L 400 505 L 400 290 L 500 290" fill="none" stroke="#a9853f" stroke-width="2" stroke-dasharray="8 7" marker-end="url(#arrow-accent)"/><text x="390" y="500" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#a9853f" text-anchor="end" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">reopen</text><line x1="650" y1="580" x2="650" y2="660" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/><text x="60" y="822" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#6b7280" text-anchor="start" paint-order="stroke" stroke="#ffffff" stroke-width="6" stroke-linejoin="round">Согласованную заявку нельзя править или удалять напрямую: только вернуть на согласование или отклонить.</text><text x="60" y="856" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#9ca3af">НИР · HR-система · 18.11.2026</text>
+</svg>

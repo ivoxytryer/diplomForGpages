@@ -1,0 +1,290 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: ui-sans-serif, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-brand: var(--brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+}
+
+:root {
+  --bg: #f1f0ec;
+  --surface: #fbfaf7;
+  --surface-2: #e9e7e1;
+  --fg: #171816;
+  --muted: #66665f;
+  --border: #d3d0c8;
+  --primary: #1d1e1b;
+  --primary-fg: #fbfaf7;
+  --brand: #1d1e1b;
+  --brand-fg: #fbfaf7;
+  --accent: #e4e1d9;
+  --success: #346b48;
+  --danger: #a13d32;
+  --warning: #8a5c1c;
+  --chart: #4b4b45;
+}
+
+.dark {
+  --bg: #0b0b0b;
+  --surface: #131313;
+  --surface-2: #1c1c1c;
+  --fg: #f1eee7;
+  --muted: #a5a198;
+  --border: #303030;
+  --primary: #f1eee7;
+  --primary-fg: #0b0b0b;
+  --brand: #f1eee7;
+  --brand-fg: #0b0b0b;
+  --accent: #222222;
+  --success: #8fbf9f;
+  --danger: #e08c7e;
+  --warning: #d3ac68;
+  --chart: #c8c4ba;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: var(--fg);
+    color: var(--bg);
+  }
+
+  input[type='date'],
+  input[type='month'] {
+    color-scheme: light;
+  }
+
+  .dark input[type='date'],
+  .dark input[type='month'] {
+    color-scheme: dark;
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-text-fill-color: var(--fg) !important;
+    -webkit-background-clip: text;
+    background-color: var(--surface) !important;
+    -webkit-box-shadow: 0 0 0 1000px var(--surface) inset !important;
+    box-shadow: 0 0 0 1000px var(--surface) inset !important;
+    caret-color: var(--fg);
+    transition: background-color 9999s ease-out 0s;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    background-color: var(--surface);
+    color: var(--fg);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 2px solid var(--bg);
+    background: color-mix(in srgb, var(--muted) 45%, transparent);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--fg);
+    outline-offset: 2px;
+  }
+}
+
+/* The product is a registry, not a card deck: no soft corners, no floating boxes. */
+@layer utilities {
+  .rounded,
+  .rounded-sm,
+  .rounded-md,
+  .rounded-lg,
+  .rounded-xl,
+  .rounded-2xl,
+  .rounded-3xl,
+  .rounded-full {
+    border-radius: 0 !important;
+  }
+
+  .shadow-sm,
+  .shadow,
+  .shadow-md,
+  .shadow-lg,
+  .shadow-xl,
+  .shadow-2xl {
+    box-shadow: none !important;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.14s linear both;
+}
+
+.animate-pop {
+  animation: pop 0.14s ease-out both;
+}
+
+.animate-slide-in {
+  animation: slide-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.recharts-default-tooltip {
+  border-radius: 0 !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Slightly larger reading size across the dense registry UI. */
+[class*='text-[9px]'] {
+  font-size: 10px !important;
+}
+
+[class*='text-[10px]'] {
+  font-size: 11px !important;
+}
+
+[class*='text-[11px]'] {
+  font-size: 12px !important;
+}
+
+[class*='text-[12px]'] {
+  font-size: 13px !important;
+}
+
+[class*='text-[13px]'] {
+  font-size: 14px !important;
+}
+
+@media print {
+  .no-print,
+  aside,
+  header,
+  nav {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-area {
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .print-area * {
+    color: #000 !important;
+  }
+
+  .print-page-break {
+    break-before: page;
+  }
+
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+}
