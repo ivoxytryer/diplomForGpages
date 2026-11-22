@@ -34,7 +34,7 @@ export function AppLayout() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-dvh bg-bg">
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed((value) => !value)}
@@ -52,7 +52,7 @@ export function AppLayout() {
 
       <div
         className={cn(
-          'flex min-h-screen flex-col transition-[padding] duration-150',
+          'flex min-h-dvh flex-col transition-[padding] duration-150',
           collapsed ? 'lg:pl-[64px]' : 'lg:pl-[232px]',
         )}
       >

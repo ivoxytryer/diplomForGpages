@@ -72,7 +72,7 @@ export function Topbar({
   const nameParts = (user?.name ?? '').split(' ');
 
   return (
-    <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-3 bg-bg px-4 lg:px-6">
+    <header className="app-topbar no-print sticky top-0 z-30 flex h-14 items-center gap-3 bg-bg px-4 lg:px-6">
       <Button variant="ghost" size="icon-sm" className="lg:hidden" onClick={onOpenMenu} aria-label="Открыть меню">
         <Menu />
       </Button>
