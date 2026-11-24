@@ -9,7 +9,8 @@ import { useAuthStore } from '@/features/auth/auth-store';
 import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
 import { can } from '@/shared/lib/permissions';
 import { projectStatusMeta } from '@/shared/lib/meta';
-import { cn, fullName } from '@/shared/lib/utils';
+import { cn, fullName, todayISO } from '@/shared/lib/utils';
+import { calculateLoad, isAssignmentActive, isAssignmentActiveOn } from '@/shared/lib/workload';
 import { AssignmentForm } from '@/features/projects/assignment-form';
 import { PageHeader, SearchInput, StatCard } from '@/shared/ui/page';
 import { Avatar, Badge, Card, EmptyState, ErrorState, Select } from '@/shared/ui/primitives';
@@ -24,7 +25,7 @@ interface EditorState {
 export function WorkloadPage() {
   const user = useAuthStore((state) => state.user);
   const managerDepartmentId = useManagerDepartmentId();
-  const { employees, projects, departmentById, departments } = useLookups();
+  const { employees, projects, projectById, departmentById, departments } = useLookups();
   const [departmentId, setDepartmentId] = useState('');
   const [search, setSearch] = useState('');
   const [showOnlyAssigned, setShowOnlyAssigned] = useState(false);
@@ -33,6 +34,7 @@ export function WorkloadPage() {
   const isEmployee = user?.role === 'employee';
   const canWrite = can(user?.role, 'projects:write');
   const scopedDepartmentId = managerDepartmentId ?? (departmentId || undefined);
+  const today = todayISO();
 
   const assignmentsQuery = useQuery({
     queryKey: ['assignments', 'workload'],
@@ -58,22 +60,22 @@ export function WorkloadPage() {
   );
   const visibleProjects = useMemo(() => {
     if (!isEmployee) return activeProjects;
-    const assignedIds = new Set(
-      assignments
-        .filter((assignment) => assignment.employeeId === user?.employeeId)
-        .map((assignment) => assignment.projectId),
+    return activeProjects.filter((project) =>
+      assignments.some(
+        (assignment) =>
+          assignment.employeeId === user?.employeeId &&
+          assignment.projectId === project.id &&
+          isAssignmentActive(assignment, project, today),
+      ),
     );
-    return activeProjects.filter((project) => assignedIds.has(project.id));
-  }, [isEmployee, activeProjects, assignments, user?.employeeId]);
-  const activeProjectIds = useMemo(
-    () => new Set(visibleProjects.map((project) => project.id)),
-    [visibleProjects],
-  );
+  }, [isEmployee, activeProjects, assignments, user?.employeeId, today]);
   const assignmentByKey = useMemo(() => {
     const map = new Map<string, Assignment>();
-    assignments.forEach((assignment) => map.set(`${assignment.employeeId}|${assignment.projectId}`, assignment));
+    assignments
+      .filter((assignment) => isAssignmentActiveOn(assignment, projectById, today))
+      .forEach((assignment) => map.set(`${assignment.employeeId}|${assignment.projectId}`, assignment));
     return map;
-  }, [assignments]);
+  }, [assignments, projectById, today]);
 
   const visibleIds = useMemo(
     () => new Set(visibleEmployees.map((employee) => employee.id)),
@@ -81,27 +83,28 @@ export function WorkloadPage() {
   );
 
   const rows = useMemo(() => {
-    const list = visibleEmployees.map((employee) => {
-      const employeeAssignments = assignments.filter(
-        (assignment) =>
-          assignment.employeeId === employee.id && activeProjectIds.has(assignment.projectId),
-      );
-      const total = employeeAssignments.reduce((sum, assignment) => sum + assignment.allocation, 0);
-      return { employee, total };
-    });
+    const list = visibleEmployees.map((employee) => ({
+      employee,
+      total: calculateLoad(assignments, projectById, employee.id, today),
+    }));
     return showOnlyAssigned ? list.filter((row) => row.total > 0) : list;
-  }, [visibleEmployees, assignments, showOnlyAssigned, activeProjectIds]);
+  }, [visibleEmployees, assignments, showOnlyAssigned, projectById, today]);
 
   const projectTotals = useMemo(() => {
     const map = new Map<string, number>();
     visibleProjects.forEach((project) => {
       const total = assignments
-        .filter((assignment) => assignment.projectId === project.id && visibleIds.has(assignment.employeeId))
+        .filter(
+          (assignment) =>
+            assignment.projectId === project.id &&
+            visibleIds.has(assignment.employeeId) &&
+            isAssignmentActive(assignment, project, today),
+        )
         .reduce((sum, assignment) => sum + assignment.allocation, 0);
       map.set(project.id, total);
     });
     return map;
-  }, [visibleProjects, assignments, visibleIds]);
+  }, [visibleProjects, assignments, visibleIds, today]);
 
   const totalAllocation = rows.reduce((sum, row) => sum + row.total, 0);
   const overloaded = rows.filter((row) => row.total > 100).length;

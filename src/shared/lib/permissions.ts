@@ -20,8 +20,6 @@ export type Action =
   | 'projects:manage-manager'
   | 'tasks:read'
   | 'tasks:write'
-  | 'payroll:read'
-  | 'payroll:write'
   | 'reports:read'
   | 'users:manage'
   | 'audit:read';
@@ -47,8 +45,6 @@ const access: Record<Role, Action[]> = {
     'projects:manage-manager',
     'tasks:read',
     'tasks:write',
-    'payroll:read',
-    'payroll:write',
     'reports:read',
     'users:manage',
     'audit:read',
@@ -69,7 +65,6 @@ const access: Record<Role, Action[]> = {
     'projects:manage-team',
     'projects:manage-manager',
     'tasks:read',
-    'payroll:read',
     'reports:read',
   ],
   manager: [
@@ -91,7 +86,6 @@ const access: Record<Role, Action[]> = {
     'salary:read',
     'timesheet:read',
     'absences:create',
-    'payroll:read',
     'tasks:read',
   ],
 };

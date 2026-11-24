@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   UserRound,
   Users,
-  Wallet,
 } from 'lucide-react';
 import type { Role } from '@/shared/types';
 
@@ -63,9 +62,8 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    title: 'Финансы и отчёты',
+    title: 'Аналитика',
     items: [
-      { to: '/payroll', label: 'Зарплата', icon: Wallet, roles: ['admin', 'hr', 'employee'] },
       { to: '/reports', label: 'Отчёты', icon: ChartNoAxesCombined, roles: ['admin', 'hr', 'manager'] },
     ],
   },

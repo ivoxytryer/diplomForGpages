@@ -67,6 +67,8 @@ export interface Assignment {
   allocation: number;
   startDate: string;
   endDate?: string | null;
+  /** Причина, по которой администратор разрешил загрузку выше 100%. */
+  overloadReason?: string;
 }
 
 export type ProjectTaskStatus = 'todo' | 'done';
@@ -75,6 +77,16 @@ interface TaskCarryEntry {
   from: string;
   to: string;
   at: string;
+}
+
+export type TaskCompletionAction = 'done' | 'reopen';
+
+export interface TaskCompletionEntry {
+  action: TaskCompletionAction;
+  comment: string;
+  at: string;
+  byId: string;
+  byName: string;
 }
 
 export interface ProjectTask {
@@ -91,14 +103,51 @@ export interface ProjectTask {
   createdByName: string;
   createdAt: string;
   completedAt?: string | null;
+  /** Комментарий результата — что именно сделал сотрудник. */
+  completionComment?: string;
+  completedById?: string | null;
+  completedByName?: string | null;
+  completionHistory?: TaskCompletionEntry[];
   /** Исходная плановая дата до переносов. */
   originalDueDate: string;
   carryCount: number;
   carryHistory: TaskCarryEntry[];
 }
 
+export interface TaskHandoverCandidate {
+  employeeId: string;
+  employeeName: string;
+  projectRole?: string;
+  load: number;
+  note?: string;
+}
+
+export interface TaskHandoverTask {
+  task: ProjectTask;
+  candidates: TaskHandoverCandidate[];
+}
+
+export interface AbsenceTaskHandover {
+  absenceId: string;
+  tasks: TaskHandoverTask[];
+}
+
+export interface AbsenceTaskDecision {
+  taskId: string;
+  action: 'keep' | 'reassign';
+  employeeId?: string;
+  comment?: string;
+}
+
 export type TimesheetCode = 'Я' | 'ОТ' | 'Б' | 'К' | 'П' | 'Н' | 'В' | '—';
 export type TimesheetStatus = 'draft' | 'submitted' | 'approved';
+export type CalendarDayKind =
+  | 'workday'
+  | 'weekend'
+  | 'holiday'
+  | 'transferred_off'
+  | 'working_saturday'
+  | 'shortened';
 
 export interface TimesheetCell {
   date: string;
@@ -106,6 +155,8 @@ export interface TimesheetCell {
   hours: number;
   isOverride: boolean;
   absenceId?: string;
+  dayType?: CalendarDayKind;
+  holidayName?: string;
 }
 
 export interface TimesheetRow {
@@ -124,6 +175,7 @@ export interface TimesheetRow {
 export interface TimesheetResponse {
   month: string;
   normDays: number;
+  normHours: number;
   rows: TimesheetRow[];
 }
 
@@ -136,7 +188,10 @@ export interface Absence {
   type: AbsenceType;
   startDate: string;
   endDate: string;
+  /** Дни в зависимости от типа: отпуск/без сохранения — календарные без праздников, больничный — календарные, командировка/учёба — рабочие. */
   days: number;
+  workingDays?: number;
+  calendarDays?: number;
   status: AbsenceStatus;
   reason?: string;
   createdAt: string;
@@ -211,6 +266,17 @@ export interface AuditEntry {
   details?: string;
 }
 
+/** История решения по задаче при согласовании отсутствия. */
+export interface AbsenceTaskDecisionRecord extends AbsenceTaskDecision {
+  id: string;
+  absenceId: string;
+  fromEmployeeId: string;
+  toEmployeeId?: string | null;
+  byUserId: string;
+  byUserName: string;
+  at: string;
+}
+
 interface TimesheetOverride {
   date: string;
   code: TimesheetCode;
@@ -225,6 +291,7 @@ export interface Db {
   assignments: Assignment[];
   projectTasks: ProjectTask[];
   absences: Absence[];
+  absenceTaskDecisions: AbsenceTaskDecisionRecord[];
   events: HrEvent[];
   users: User[];
   payslips: Payslip[];
@@ -353,6 +420,7 @@ export interface AssignmentPayload {
   allocation: number;
   startDate: string;
   endDate?: string | null;
+  overloadReason?: string;
 }
 
 export interface ProjectTaskPayload {
@@ -374,6 +442,8 @@ export interface ProjectTaskUpdatePayload {
   employeeId?: string;
   /** Перенести задачу на следующий рабочий день. */
   postpone?: boolean;
+  /** Комментарий результата при закрытии задачи. */
+  completionComment?: string;
 }
 
 export interface ProjectTaskQuery {

@@ -146,11 +146,10 @@ describe('права на запись', () => {
   it('требует сессию для изменений', async () => {
     expect((await call('POST', '/employees', {})).status).toBe(401);
     expect((await call('GET', '/audit')).status).toBe(401);
-    expect((await call('POST', '/payroll/calculate', { period: monthKey() })).status).toBe(401);
     expect((await call('DELETE', '/projects/pr1')).status).toBe(401);
   });
 
-  it('сотрудник не может менять карточки, табель, заявки других и зарплату', async () => {
+  it('сотрудник не может менять карточки, табель и заявки других', async () => {
     const employee = await login('employee@hr.local');
     const today = todayISO();
 
@@ -162,9 +161,6 @@ describe('права на запись', () => {
     ).toBe(403);
     expect(
       (await call('PATCH', `/timesheet/${'e004'}/status`, { month: monthKey(), status: 'approved' }, employee.token)).status,
-    ).toBe(403);
-    expect(
-      (await call('POST', '/payroll/calculate', { period: monthKey() }, employee.token)).status,
     ).toBe(403);
     expect((await call('POST', '/events', { employeeId: 'e004', type: 'transfer' }, employee.token)).status).toBe(
       403,
@@ -250,13 +246,10 @@ describe('права на запись', () => {
     expect((await call('DELETE', `/absences/${ownApproved.id}`, undefined, employee.token)).status).toBe(400);
   });
 
-  it('руководитель не может менять карточки и зарплату, но может задачи', async () => {
+  it('руководитель не может менять карточки, но видит только свой оклад и может ставить задачи', async () => {
     const manager = await login('manager@hr.local');
     const today = todayISO();
     expect((await call('PATCH', '/employees/e004', { salary: 1 }, manager.token)).status).toBe(403);
-    expect(
-      (await call('POST', '/payroll/calculate', { period: monthKey() }, manager.token)).status,
-    ).toBe(403);
 
     const ownCard = asItem((await call('GET', '/employees/e003', undefined, manager.token)).data);
     expect(ownCard.salary).toBeGreaterThan(0);
@@ -406,6 +399,36 @@ describe('отсутствия и статус сотрудника', () => {
     expect(employee.status).toBe('active');
   });
 
+  it('руководитель согласует только своё подразделение и дочерние', async () => {
+    const admin = await login('admin@hr.local');
+    const manager = await login('manager@hr.local');
+    const start = dayjs().add(3, 'month').startOf('month').add(9, 'day').format('YYYY-MM-DD');
+
+    const ownScope = await call(
+      'POST',
+      '/absences',
+      { employeeId: 'e009', type: 'vacation', startDate: start, endDate: start },
+      admin.token,
+    );
+    expect(ownScope.status).toBe(201);
+    expect(
+      (await call('PATCH', `/absences/${asItem(ownScope.data).id}/status`, { status: 'approved' }, manager.token))
+        .status,
+    ).toBe(200);
+
+    const foreignScope = await call(
+      'POST',
+      '/absences',
+      { employeeId: 'e008', type: 'vacation', startDate: start, endDate: start },
+      admin.token,
+    );
+    expect(foreignScope.status).toBe(201);
+    expect(
+      (await call('PATCH', `/absences/${asItem(foreignScope.data).id}/status`, { status: 'approved' }, manager.token))
+        .status,
+    ).toBe(403);
+  });
+
   it('запрещает пересекающиеся заявки', async () => {
     const admin = await login('admin@hr.local');
     const today = todayISO();
@@ -484,30 +507,6 @@ describe('табель', () => {
   });
 });
 
-describe('зарплата', () => {
-  it('рассчитывает ведомость и обновляет премию со статусом', async () => {
-    const admin = await login('admin@hr.local');
-    const month = monthKey();
-    const calculated = await call('POST', '/payroll/calculate', { period: month }, admin.token);
-    expect(calculated.status).toBe(200);
-    const payslips = asArray(calculated.data);
-    expect(payslips.length).toBeGreaterThan(0);
-
-    const first = payslips[0];
-    const updated = await call('PATCH', `/payroll/${first.id}`, { bonus: 5000 }, admin.token);
-    expect(updated.status).toBe(200);
-    const payslip = asItem(updated.data);
-    expect(payslip.bonus).toBe(5000);
-    expect(Number(payslip.gross)).toBe(
-      Math.round((Number(payslip.baseSalary) / Number(payslip.normDays)) * Number(payslip.paidDays) + 5000),
-    );
-
-    expect((await call('PATCH', `/payroll/${first.id}`, { status: 'approved' }, admin.token)).status).toBe(200);
-    expect((await call('PATCH', `/payroll/${first.id}`, { status: 'weird' }, admin.token)).status).toBe(400);
-    expect((await call('PATCH', `/payroll/${first.id}`, { bonus: -10 }, admin.token)).status).toBe(400);
-  });
-});
-
 describe('задачи', () => {
   it('сотрудник выполняет и переносит только свои задачи', async () => {
     const employee = await login('employee@hr.local');
@@ -523,10 +522,20 @@ describe('задачи', () => {
     expect(afterPostpone.carryCount).toBe(1);
     expect(String(afterPostpone.dueDate) > today).toBe(true);
 
-    const done = await call('PATCH', '/tasks/t001', { status: 'done' }, employee.token);
+    const done = await call(
+      'PATCH',
+      '/tasks/t001',
+      {
+        status: 'done',
+        completionComment: 'Подготовила макет и согласовала его с дизайнером.',
+      },
+      employee.token,
+    );
     expect(done.status).toBe(200);
     expect(asItem(done.data).status).toBe('done');
     expect(asItem(done.data).completedAt).not.toBeNull();
+    expect(asItem(done.data).completionComment).toContain('макет');
+    expect((asItem(done.data).completionHistory as unknown[]).length).toBe(1);
 
     // Сотрудник не может менять содержимое задачи.
     expect((await call('PATCH', '/tasks/t001', { title: 'Хак' }, employee.token)).status).toBe(403);
@@ -662,6 +671,50 @@ describe('справочники и проекты', () => {
     );
     expect(invalid.status).toBe(400);
   });
+
+  it('запрещает перегруз всем, кроме администратора с причиной', async () => {
+    const admin = await login('admin@hr.local');
+    const manager = await login('manager@hr.local');
+    const assignment = {
+      projectId: 'pr2',
+      employeeId: 'e009',
+      projectRole: 'Участник',
+      allocation: 40,
+      startDate: todayISO(),
+    };
+
+    // e009 уже загружен на 70%; 70 + 40 = 110%.
+    expect((await call('POST', '/assignments', assignment, manager.token)).status).toBe(400);
+    expect((await call('POST', '/assignments', assignment, admin.token)).status).toBe(400);
+
+    const approved = await call(
+      'POST',
+      '/assignments',
+      { ...assignment, overloadReason: 'Критичный срок релиза' },
+      admin.token,
+    );
+    expect(approved.status).toBe(201);
+    expect(asItem(approved.data).overloadReason).toBe('Критичный срок релиза');
+
+    // 110 + 50 = 160%, выше администраторского предела 150%.
+    expect(
+      (
+        await call(
+          'POST',
+          '/assignments',
+          {
+            projectId: 'pr3',
+            employeeId: 'e009',
+            projectRole: 'Участник',
+            allocation: 50,
+            startDate: todayISO(),
+            overloadReason: 'Ещё один проект',
+          },
+          admin.token,
+        )
+      ).status,
+    ).toBe(400);
+  });
 });
 
 describe('лента событий и отсутствия', () => {
@@ -700,7 +753,7 @@ describe('лента событий и отсутствия', () => {
     expect(events.some((event) => event.absenceId === absence.id)).toBe(false);
   });
 
-  it('не согласует больничный с активными задачами без переназначения', async () => {
+  it('согласует больничный и позволяет оставить или передать задачи', async () => {
     const admin = await login('admin@hr.local');
     const date = dayjs().add(2, 'month').startOf('month').add(9, 'day').format('YYYY-MM-DD');
     const created = await call(
@@ -712,16 +765,37 @@ describe('лента событий и отсутствия', () => {
     expect(created.status).toBe(201);
     const absence = asItem(created.data);
 
-    expect(
-      (await call('PATCH', `/absences/${absence.id}/status`, { status: 'approved' }, admin.token))
-        .status,
-    ).toBe(400);
+    const tasks = asArray(
+      (await call('GET', '/tasks?employeeId=e004&status=todo', undefined, admin.token)).data,
+    );
+    const task = tasks.find((item) => item.projectId === 'pr1');
+    if (!task) throw new Error('Активная задача e004 на pr1 не найдена');
 
-    await reassignTasks('e004', admin.token);
-    expect(
-      (await call('PATCH', `/absences/${absence.id}/status`, { status: 'approved' }, admin.token))
-        .status,
-    ).toBe(200);
+    const handover = asItem(
+      (await call('GET', `/absences/${absence.id}/task-handover`, undefined, admin.token)).data,
+    ) as { tasks: Array<{ task: { id: string }; candidates: Array<{ employeeId: string }> }> };
+    const handoverTask = handover.tasks.find((item) => item.task.id === task.id);
+    expect(handoverTask).toBeTruthy();
+    const candidate = handoverTask?.candidates[0];
+    expect(candidate).toBeTruthy();
+
+    const approved = await call(
+      'PATCH',
+      `/absences/${absence.id}/status`,
+      {
+        status: 'approved',
+        taskDecisions: [
+          { taskId: task.id, action: 'reassign', employeeId: candidate!.employeeId },
+        ],
+      },
+      admin.token,
+    );
+    expect(approved.status).toBe(200);
+
+    const updated = asArray(
+      (await call('GET', '/tasks?employeeId=e004&status=todo', undefined, admin.token)).data,
+    );
+    expect(updated.some((item) => item.id === task.id)).toBe(false);
   });
 
   it('обновляет событие при изменении заявки и удаляет вместе с ней', async () => {
@@ -1044,18 +1118,9 @@ describe('уточнённые права HR', () => {
     ).toBe(200);
   });
 
-  it('HR видит зарплату только для чтения', async () => {
+  it('HR видит оклады, но не меняет их', async () => {
     const hr = await login('hr@hr.local');
     const admin = await login('admin@hr.local');
-    const month = monthKey();
-
-    expect((await call('POST', '/payroll/calculate', { period: month }, hr.token)).status).toBe(403);
-    const calculated = await call('POST', '/payroll/calculate', { period: month }, admin.token);
-    expect(calculated.status).toBe(200);
-    const payslip = asArray(calculated.data)[0];
-    expect(payslip).toBeTruthy();
-    expect((await call('PATCH', `/payroll/${payslip.id}`, { bonus: 1000 }, hr.token)).status).toBe(403);
-    expect((await call('GET', `/payroll?period=${month}`, undefined, hr.token)).status).toBe(200);
 
     expect((await call('PATCH', '/employees/e004', { salary: 999999 }, hr.token)).status).toBe(403);
     const updated = await call('PATCH', '/employees/e004', { salary: 200000 }, admin.token);

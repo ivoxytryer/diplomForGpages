@@ -4,12 +4,14 @@ import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { Assignment, AssignmentPayload } from '@/shared/types';
 import { useLookups } from '@/shared/hooks/use-lookups';
+import { useAuthStore } from '@/features/auth/auth-store';
 import { findEmployeeAbsenceNote } from '@/shared/lib/absences';
 import { absenceTypeMeta } from '@/shared/lib/meta';
+import { ADMIN_LOAD_LIMIT, calculateLoad, remainingCapacity } from '@/shared/lib/workload';
 import { cn, employeeOptionLabel, formatDate, fullName, todayISO } from '@/shared/lib/utils';
 import { Dialog } from '@/shared/ui/overlay';
 import { Button } from '@/shared/ui/button';
-import { Field, Input, Select } from '@/shared/ui/primitives';
+import { Field, Input, Select, Textarea } from '@/shared/ui/primitives';
 import { useToast } from '@/shared/ui/toast';
 
 interface AssignmentFormProps {
@@ -28,6 +30,7 @@ function defaults(projectId?: string, employeeId?: string, assignment?: Assignme
     allocation: assignment?.allocation ?? 50,
     startDate: assignment?.startDate ?? todayISO(),
     endDate: assignment?.endDate ?? null,
+    overloadReason: assignment?.overloadReason ?? '',
   };
 }
 
@@ -41,6 +44,7 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
     departmentById,
     positionById,
   } = useLookups();
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const toast = useToast();
   const [values, setValues] = useState<AssignmentPayload>(() => defaults(projectId, employeeId, assignment));
@@ -65,16 +69,25 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
   const fixedEmployee = assignment?.employeeId ?? employeeId;
   const today = todayISO();
 
-  // Суммарная активная загрузка сотрудников по всем проектам.
+  // Активная загрузка на дату начала назначения: завершённые и будущие
+  // назначения не должны раздувать «текущую» загрузку.
+  const loadDate = values.startDate || today;
   const loads = useMemo(() => {
     const map = new Map<string, number>();
-    for (const item of assignmentsQuery.data ?? []) {
-      if (item.endDate && item.endDate < today) continue;
-      if (projectById.get(item.projectId)?.status === 'completed') continue;
-      map.set(item.employeeId, (map.get(item.employeeId) ?? 0) + item.allocation);
+    for (const employee of employees) {
+      map.set(
+        employee.id,
+        calculateLoad(
+          assignmentsQuery.data ?? [],
+          projectById,
+          employee.id,
+          loadDate,
+          employee.id === assignment?.employeeId ? assignment?.id : undefined,
+        ),
+      );
     }
     return map;
-  }, [assignmentsQuery.data, projectById, today]);
+  }, [assignmentsQuery.data, projectById, employees, loadDate, assignment?.employeeId, assignment?.id]);
 
   const filteredEmployees = useMemo(
     () =>
@@ -98,12 +111,22 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
       : `${label} с ${formatDate(note.absence.startDate)}`;
   };
   const selectedAbsence = selectedEmployee ? absenceFor(selectedEmployee.id) : null;
+  const isAdmin = user?.role === 'admin';
   const currentLoad = selectedEmployee ? (loads.get(selectedEmployee.id) ?? 0) : 0;
-  const baseLoad =
-    selectedEmployee && assignment && assignment.employeeId === selectedEmployee.id
-      ? Math.max(0, currentLoad - assignment.allocation)
-      : currentLoad;
-  const projectedLoad = baseLoad + (Number(values.allocation) || 0);
+  const allocation = Number(values.allocation) || 0;
+  const projectedLoad = currentLoad + allocation;
+  const remaining = remainingCapacity(currentLoad);
+  const loadLimit = isAdmin ? ADMIN_LOAD_LIMIT : 100;
+
+  const selectedEmployeeId = selectedEmployee?.id;
+  useEffect(() => {
+    if (!selectedEmployeeId || isAdmin) return;
+    setValues((previous) =>
+      previous.allocation > remaining
+        ? { ...previous, allocation: remaining }
+        : previous,
+    );
+  }, [selectedEmployeeId, remaining, isAdmin]);
 
   useEffect(() => {
     if (!values.employeeId || fixedEmployee) return;
@@ -148,7 +171,8 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
       values.employeeId &&
       values.allocation >= 0 &&
       values.allocation <= 100 &&
-      (assignment || !selectedEmployee || currentLoad < 100) &&
+      projectedLoad <= loadLimit &&
+      (projectedLoad <= 100 || (isAdmin && Boolean(values.overloadReason?.trim()))) &&
       (!values.endDate || values.endDate >= values.startDate),
   );
 
@@ -236,20 +260,22 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
               {filteredEmployees.map((employee) => {
                 const load = loads.get(employee.id) ?? 0;
                 const loadLabel =
-                  load > 100
-                    ? ` · перегруз ${load}%`
-                    : load === 100
-                      ? ' · занят на 100%'
-                      : load > 0
-                        ? ` · загрузка ${load}%`
-                        : '';
+                  load >= 100
+                    ? ` · загрузка ${load}%`
+                    : load >= 90
+                      ? ` · загрузка ${load}%, осталось ${remainingCapacity(load)}%`
+                      : load >= 80
+                        ? ` · высокая загрузка ${load}%`
+                        : load > 0
+                          ? ` · загрузка ${load}%`
+                          : '';
                 const absence = absenceLabel(employee.id);
                 return (
                   <option
                     key={employee.id}
                     value={employee.id}
-                    disabled={load >= 100}
-                    className={load >= 100 ? 'text-muted' : undefined}
+                    disabled={!isAdmin && load >= 100}
+                    className={!isAdmin && load >= 100 ? 'text-muted' : undefined}
                   >
                     {fullName(employee)} · {positionById.get(employee.positionId)?.name ?? '—'} ·{' '}
                     {departmentById.get(employee.departmentId)?.name ?? '—'}
@@ -269,11 +295,15 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
                   : 'text-muted',
               )}
             >
-              {currentLoad >= 100 && !assignment
-                ? `Сотрудник уже загружен на ${currentLoad}% — назначение недоступно`
-                : `Загрузка сейчас: ${currentLoad}% · после назначения: ${projectedLoad}%${
-                    projectedLoad > 100 ? ' — перегруз' : ''
-                  }`}
+              {currentLoad >= 100 && !isAdmin
+                ? `Сотрудник уже загружен на ${currentLoad}% — свободного времени нет`
+                : currentLoad >= 90
+                  ? `Загрузка ${currentLoad}% · осталось ${remaining}% · можно дать только небольшую задачу`
+                  : `Загрузка сейчас: ${currentLoad}% · после назначения: ${projectedLoad}%${
+                      projectedLoad > 100
+                        ? ` — перегруз (${isAdmin ? 'разрешено администратору' : 'недоступно'})`
+                        : ''
+                    }`}
             </p>
           ) : null}
           {selectedAbsence ? (
@@ -292,11 +322,18 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
             placeholder="Разработчик"
           />
         </Field>
-        <Field label="Загрузка, %" hint="От 0 до 100">
+        <Field
+          label="Загрузка, %"
+          hint={
+            selectedEmployee
+              ? `Свободно ${remaining}% · максимум ${isAdmin ? ADMIN_LOAD_LIMIT : remaining}%`
+              : 'От 0 до 100'
+          }
+        >
           <Input
             type="number"
             min={0}
-            max={100}
+            max={isAdmin ? 100 : Math.max(0, Math.min(100, remaining))}
             step={5}
             value={values.allocation}
             onChange={(event) =>
@@ -325,6 +362,26 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
             onChange={(event) => setValues((prev) => ({ ...prev, endDate: event.target.value || null }))}
           />
         </Field>
+        {projectedLoad > 100 ? (
+          <Field
+            label="Причина перегруза *"
+            className="sm:col-span-2"
+            hint={
+              isAdmin
+                ? `Доступно только администратору, итоговая загрузка до ${ADMIN_LOAD_LIMIT}%`
+                : 'Превышать 100% может только администратор'
+            }
+          >
+            <Textarea
+              value={values.overloadReason ?? ''}
+              onChange={(event) =>
+                setValues((prev) => ({ ...prev, overloadReason: event.target.value }))
+              }
+              placeholder="Почему сотруднику нужна загрузка выше 100%"
+              disabled={!isAdmin}
+            />
+          </Field>
+        ) : null}
       </div>
     </Dialog>
   );

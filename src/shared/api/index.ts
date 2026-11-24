@@ -3,6 +3,8 @@ import type {
   Absence,
   AbsencePayload,
   AbsenceStatus,
+  AbsenceTaskDecision,
+  AbsenceTaskHandover,
   Assignment,
   AssignmentPayload,
   AuditEntry,
@@ -20,7 +22,6 @@ import type {
   HrEventPayload,
   LoginPayload,
   Paginated,
-  Payslip,
   Position,
   PositionPayload,
   Project,
@@ -62,12 +63,6 @@ function getList<T>(url: string, params?: object) {
   );
 }
 
-function postList<T>(url: string, body?: unknown) {
-  return post<unknown>(url, body).then((data) =>
-    Array.isArray(data) ? (data as T[]) : ([] as T[]),
-  );
-}
-
 function normalizePage<T>(data: unknown, params: EmployeeQuery): Paginated<T> {
   const value = data && typeof data === 'object' ? (data as Partial<Paginated<T>>) : {};
   const items = Array.isArray(value.items) ? value.items : [];
@@ -85,6 +80,7 @@ function normalizeTimesheet(data: unknown, month: string): TimesheetResponse {
   return {
     month: typeof value.month === 'string' ? value.month : month,
     normDays: typeof value.normDays === 'number' ? value.normDays : 0,
+    normHours: typeof value.normHours === 'number' ? value.normHours : 0,
     rows: Array.isArray(value.rows) ? value.rows : [],
   };
 }
@@ -214,8 +210,10 @@ export const api = {
     create: (payload: AbsencePayload) => post<Absence>('/absences', payload),
     update: (id: string, payload: Partial<AbsencePayload>) =>
       patch<Absence>(`/absences/${id}`, payload),
-    setStatus: (id: string, status: AbsenceStatus) =>
-      patch<Absence>(`/absences/${id}/status`, { status }),
+    setStatus: (id: string, status: AbsenceStatus, taskDecisions?: AbsenceTaskDecision[]) =>
+      patch<Absence>(`/absences/${id}/status`, { status, taskDecisions }),
+    taskHandover: (id: string) =>
+      get<AbsenceTaskHandover>(`/absences/${id}/task-handover`),
     remove: (id: string) => del<{ ok: true }>(`/absences/${id}`),
   },
 
@@ -223,13 +221,6 @@ export const api = {
     list: (params: { employeeId?: string; month?: string; type?: string } = {}) =>
       getList<HrEvent>('/events', params),
     create: (payload: HrEventPayload) => post<HrEvent>('/events', payload),
-  },
-
-  payroll: {
-    list: (period: string) => getList<Payslip>('/payroll', { period }),
-    calculate: (period: string) => postList<Payslip>('/payroll/calculate', { period }),
-    update: (id: string, payload: { bonus?: number; status?: 'draft' | 'approved' }) =>
-      patch<Payslip>(`/payroll/${id}`, payload),
   },
 
   dashboard: {

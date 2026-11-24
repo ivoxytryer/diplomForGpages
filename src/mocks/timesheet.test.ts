@@ -44,8 +44,9 @@ describe('buildTimesheetRow: явки только с даты приёма', ()
     expect(row.days.find((day) => day.date === '2026-11-01')?.code).toBe('—');
     expect(row.days.find((day) => day.date === '2026-11-02')?.code).toBe('Я');
     expect(row.days.some((day) => day.code === '—')).toBe(true);
-    expect(row.workedDays).toBe(21);
-    expect(row.totalHours).toBe(168);
+    // Ноябрь 2026: 20 рабочих дней, 4 ноября — праздник, 3 ноября — сокращённый день.
+    expect(row.workedDays).toBe(20);
+    expect(row.totalHours).toBe(159);
   });
 
   it('не начисляет явки после даты увольнения', () => {
@@ -56,8 +57,9 @@ describe('buildTimesheetRow: явки только с даты приёма', ()
     expect(row.days.find((day) => day.date === '2026-11-10')?.code).toBe('Я');
     expect(row.days.find((day) => day.date === '2026-11-11')?.code).toBe('—');
     expect(row.days.find((day) => day.date === '2026-11-30')?.code).toBe('—');
-    expect(row.workedDays).toBe(7);
-    expect(row.totalHours).toBe(56);
+    // 2, 3, 5, 6, 9 и 10 ноября; 3 ноября сокращён на час, 4 ноября — праздник.
+    expect(row.workedDays).toBe(6);
+    expect(row.totalHours).toBe(47);
   });
 
   it('начисляет 8 часов за рабочие дни командировки', () => {
@@ -80,9 +82,9 @@ describe('buildTimesheetRow: явки только с даты приёма', ()
 
     expect(row.tripDays).toBe(2);
     expect(row.days.find((day) => day.date === '2026-11-10')?.hours).toBe(8);
-    // 21 рабочий день месяца, два из них — командировка.
-    expect(row.workedDays).toBe(19);
-    expect(row.totalHours).toBe(168);
+    // 20 рабочих дней месяца, два из них — командировка.
+    expect(row.workedDays).toBe(18);
+    expect(row.totalHours).toBe(159);
   });
 
   it('подставляет коды согласованных отсутствий и игнорирует несогласованные', () => {
@@ -95,11 +97,11 @@ describe('buildTimesheetRow: явки только с даты приёма', ()
     };
     db.absences = [
       { ...base, id: 'ab-vac', type: 'vacation', startDate: '2026-11-03', endDate: '2026-11-03', status: 'approved' },
-      { ...base, id: 'ab-sick', type: 'sick', startDate: '2026-11-04', endDate: '2026-11-04', status: 'approved' },
-      { ...base, id: 'ab-trip', type: 'business_trip', startDate: '2026-11-05', endDate: '2026-11-05', status: 'approved' },
-      { ...base, id: 'ab-unpaid', type: 'unpaid', startDate: '2026-11-06', endDate: '2026-11-06', status: 'approved' },
-      { ...base, id: 'ab-study', type: 'study', startDate: '2026-11-09', endDate: '2026-11-09', status: 'approved' },
-      { ...base, id: 'ab-pending', type: 'vacation', startDate: '2026-11-10', endDate: '2026-11-10', status: 'pending' },
+      { ...base, id: 'ab-sick', type: 'sick', startDate: '2026-11-05', endDate: '2026-11-05', status: 'approved' },
+      { ...base, id: 'ab-trip', type: 'business_trip', startDate: '2026-11-06', endDate: '2026-11-06', status: 'approved' },
+      { ...base, id: 'ab-unpaid', type: 'unpaid', startDate: '2026-11-09', endDate: '2026-11-09', status: 'approved' },
+      { ...base, id: 'ab-study', type: 'study', startDate: '2026-11-10', endDate: '2026-11-10', status: 'approved' },
+      { ...base, id: 'ab-pending', type: 'vacation', startDate: '2026-11-11', endDate: '2026-11-11', status: 'pending' },
     ];
 
     const row = buildTimesheetRow(db, employee, '2026-11');
@@ -107,14 +109,16 @@ describe('buildTimesheetRow: явки только с даты приёма', ()
 
     expect(code('2026-11-03')?.code).toBe('ОТ');
     expect(code('2026-11-03')?.hours).toBe(0);
-    expect(code('2026-11-04')?.code).toBe('Б');
-    expect(code('2026-11-04')?.hours).toBe(0);
-    expect(code('2026-11-05')?.code).toBe('К');
-    expect(code('2026-11-05')?.hours).toBe(8);
-    expect(code('2026-11-06')?.code).toBe('Н');
-    expect(code('2026-11-06')?.hours).toBe(0);
-    expect(code('2026-11-09')?.code).toBe('ОТ');
-    expect(code('2026-11-10')?.code).toBe('Я');
+    // 4 ноября — праздник, отсутствие на праздничный день не накладывается.
+    expect(code('2026-11-04')?.code).toBe('В');
+    expect(code('2026-11-05')?.code).toBe('Б');
+    expect(code('2026-11-05')?.hours).toBe(0);
+    expect(code('2026-11-06')?.code).toBe('К');
+    expect(code('2026-11-06')?.hours).toBe(8);
+    expect(code('2026-11-09')?.code).toBe('Н');
+    expect(code('2026-11-09')?.hours).toBe(0);
+    expect(code('2026-11-10')?.code).toBe('ОТ');
+    expect(code('2026-11-11')?.code).toBe('Я');
     expect(row.vacationDays).toBe(2);
     expect(row.sickDays).toBe(1);
     expect(row.tripDays).toBe(1);

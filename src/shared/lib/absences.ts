@@ -1,9 +1,28 @@
 import dayjs from 'dayjs';
-import type { Absence } from '@/shared/types';
+import type { Absence, AbsenceType } from '@/shared/types';
+import { calendarDaysBetween, holidayDaysBetween, workingDaysBetween } from './calendar';
 
 /** Пересечение периодов включительно: 10–12 и 12–14 пересекаются. */
 export function periodsOverlap(startA: string, endA: string, startB: string, endB: string) {
   return startA <= endB && endA >= startB;
+}
+
+/**
+ * Дни отсутствия зависят от типа:
+ * - отпуск и отпуск без сохранения — календарные дни без нерабочих праздников;
+ * - больничный — календарные дни;
+ * - командировка и учёба — рабочие дни по производственному календарю.
+ */
+export function absenceDayBreakdown(type: AbsenceType, startDate: string, endDate: string) {
+  const workingDays = workingDaysBetween(startDate, endDate);
+  const calendarDays = calendarDaysBetween(startDate, endDate);
+  const holidays = holidayDaysBetween(startDate, endDate);
+
+  let days = workingDays;
+  if (type === 'sick') days = calendarDays;
+  else if (type === 'vacation' || type === 'unpaid') days = Math.max(0, calendarDays - holidays);
+
+  return { days, workingDays, calendarDays };
 }
 
 /**

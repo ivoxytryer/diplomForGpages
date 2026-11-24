@@ -23,7 +23,6 @@ const entityLabels: Record<string, string> = {
   employee: 'Сотрудник',
   user: 'Пользователь',
   absence: 'Отсутствие',
-  payroll: 'Зарплата',
   project: 'Проект',
   assignment: 'Назначение',
   department: 'Подразделение',

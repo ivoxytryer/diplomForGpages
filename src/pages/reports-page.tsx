@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3,
@@ -9,7 +10,6 @@ import {
   Info,
   Printer,
   Users,
-  Wallet,
 } from 'lucide-react';
 import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
@@ -17,21 +17,24 @@ import type { CellValue } from '@/shared/lib/export';
 import { exportExcel, printDocument, todayStamp } from '@/shared/lib/export';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
-import { can } from '@/shared/lib/permissions';
 import {
+  absenceTypeMeta,
   eventTypeMeta,
-  payrollStatusMeta,
   projectStatusMeta,
   timesheetStatusMeta,
 } from '@/shared/lib/meta';
-import { formatMoney, fullName, monthKey, monthLabel, plural } from '@/shared/lib/utils';
+import { formatDate, formatMoney, fullName, monthKey, monthLabel, plural, todayISO } from '@/shared/lib/utils';
+import { isAssignmentActiveOn } from '@/shared/lib/workload';
+import { findEmployeeAbsenceNote } from '@/shared/lib/absences';
 import { MonthSwitcher, PageHeader, StatCard } from '@/shared/ui/page';
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Select, Skeleton } from '@/shared/ui/primitives';
 import { Button } from '@/shared/ui/button';
 import { TBody, TD, TH, THead, TR, Table } from '@/shared/ui/table';
 import { useToast } from '@/shared/ui/toast';
 
-type ReportKey = 'timesheet' | 'payroll' | 'workload' | 'movement' | 'departments';
+type ReportKey = 'timesheet' | 'projectTeams' | 'workload' | 'movement' | 'departments';
+
+const reportKeys: ReportKey[] = ['timesheet', 'projectTeams', 'workload', 'movement', 'departments'];
 
 interface ReportTable {
   title?: string;
@@ -52,10 +55,10 @@ const reportMeta: Record<ReportKey, { label: string; description: string; icon: 
     description: 'Явки, отпуска, больничные и командировки за месяц',
     icon: CalendarRange,
   },
-  payroll: {
-    label: 'Расчётная ведомость',
-    description: 'Начисления, НДФЛ и суммы к выплате за месяц',
-    icon: Wallet,
+  projectTeams: {
+    label: 'Загруженность проектов и команды',
+    description: 'Проекты, участники, роли и загрузка на текущую дату',
+    icon: FolderKanban,
   },
   workload: {
     label: 'Загрузка по проектам',
@@ -79,26 +82,26 @@ export function ReportsPage() {
   const managerDepartmentId = useManagerDepartmentId();
   const { employees, positions, departments, departmentById, employeeById, projectById, projects } = useLookups();
   const toast = useToast();
+  const [searchParams] = useSearchParams();
+  const requestedReport = searchParams.get('report');
+  const initialReport =
+    requestedReport && reportKeys.includes(requestedReport as ReportKey)
+      ? (requestedReport as ReportKey)
+      : 'timesheet';
 
-  const [report, setReport] = useState<ReportKey>('timesheet');
+  const [report, setReport] = useState<ReportKey>(initialReport);
   const [period, setPeriod] = useState(monthKey());
   const [departmentId, setDepartmentId] = useState('');
+  const [projectFilter, setProjectFilter] = useState(searchParams.get('project') ?? '');
 
-  const canPayroll = can(user?.role, 'payroll:read');
   const canSeeSalaries = user?.role === 'admin' || user?.role === 'hr';
   const scopedDepartmentId = managerDepartmentId ?? (departmentId || undefined);
-  const monthDependent = report === 'timesheet' || report === 'payroll' || report === 'movement';
+  const monthDependent = report === 'timesheet' || report === 'movement';
 
   const timesheetQuery = useQuery({
     queryKey: ['report', 'timesheet', period, scopedDepartmentId],
     queryFn: () => api.timesheet.get({ month: period, departmentId: scopedDepartmentId }),
     enabled: report === 'timesheet',
-  });
-
-  const payrollQuery = useQuery({
-    queryKey: ['report', 'payroll', period],
-    queryFn: () => api.payroll.list(period),
-    enabled: report === 'payroll' && canPayroll,
   });
 
   const eventsQuery = useQuery({
@@ -110,14 +113,16 @@ export function ReportsPage() {
   const assignmentsQuery = useQuery({
     queryKey: ['report', 'assignments'],
     queryFn: () => api.assignments.list(),
-    enabled: report === 'workload' || report === 'departments',
+    enabled: report === 'projectTeams' || report === 'workload' || report === 'departments',
   });
 
-  const availableReports = useMemo(() => {
-    const list: ReportKey[] = ['timesheet', 'workload', 'movement', 'departments'];
-    if (canPayroll) list.splice(1, 0, 'payroll');
-    return list;
-  }, [canPayroll]);
+  const absencesQuery = useQuery({
+    queryKey: ['report', 'absences'],
+    queryFn: () => api.absences.list({ status: 'approved' }),
+    enabled: report === 'projectTeams',
+  });
+
+  const availableReports: ReportKey[] = reportKeys;
 
   const allScopedEmployees = useMemo(
     () =>
@@ -135,9 +140,44 @@ export function ReportsPage() {
     () => new Set(allScopedEmployees.map((employee) => employee.id)),
     [allScopedEmployees],
   );
-  const reportEmployees = report === 'payroll' || report === 'movement' ? allScopedEmployees : scopedEmployees;
+  const reportEmployees = report === 'movement' ? allScopedEmployees : scopedEmployees;
 
+  const today = todayISO();
   const assignments = useMemo(() => assignmentsQuery.data ?? [], [assignmentsQuery.data]);
+  const activeAssignments = useMemo(
+    () => assignments.filter((assignment) => isAssignmentActiveOn(assignment, projectById, today)),
+    [assignments, projectById, today],
+  );
+
+  const projectTeamEmployeeCount = useMemo(() => {
+    if (report !== 'projectTeams') return reportEmployees.length;
+    const selectedProject = projectFilter
+      ? projects.find((project) => project.id === projectFilter)
+      : undefined;
+    const source = selectedProject
+      ? assignments.filter(
+          (assignment) =>
+            assignment.projectId === selectedProject.id &&
+            (selectedProject.status === 'completed' ||
+              isAssignmentActiveOn(assignment, projectById, today)),
+        )
+      : activeAssignments;
+    return new Set(
+      source
+        .filter((assignment) => allScopedIds.has(assignment.employeeId))
+        .map((assignment) => assignment.employeeId),
+    ).size;
+  }, [
+    report,
+    reportEmployees.length,
+    projectFilter,
+    projects,
+    assignments,
+    activeAssignments,
+    projectById,
+    today,
+    allScopedIds,
+  ]);
 
   const data = useMemo<ReportData | null>(() => {
     const deptName = scopedDepartmentId
@@ -191,47 +231,146 @@ export function ReportsPage() {
       };
     }
 
-    if (report === 'payroll') {
-      if (!payrollQuery.data) return null;
-      const payslips = payrollQuery.data.filter((payslip) => allScopedIds.has(payslip.employeeId));
-      const rowsData = payslips.map((payslip) => {
-        const employee = employeeById.get(payslip.employeeId);
-        return [
-          employee ? fullName(employee) : payslip.employeeId,
-          employee ? departmentById.get(employee.departmentId)?.name ?? '—' : '—',
-          payslip.baseSalary,
-          payslip.normDays,
-          payslip.paidDays,
-          payslip.bonus,
-          payslip.gross,
-          payslip.ndfl,
-          payslip.net,
-          payrollStatusMeta[payslip.status].label,
-        ];
-      });
-      const totals = payslips.reduce(
-        (acc, payslip) => ({
-          bonus: acc.bonus + payslip.bonus,
-          gross: acc.gross + payslip.gross,
-          ndfl: acc.ndfl + payslip.ndfl,
-          net: acc.net + payslip.net,
-        }),
-        { bonus: 0, gross: 0, ndfl: 0, net: 0 },
+    if (report === 'projectTeams') {
+      if (!assignmentsQuery.data) return null;
+      const selectedProject = projectFilter
+        ? projects.find((project) => project.id === projectFilter)
+        : undefined;
+      const reportProjects = selectedProject
+        ? [selectedProject]
+        : projects.filter((project) => project.status !== 'completed');
+      const projectIds = new Set(reportProjects.map((project) => project.id));
+      const reportAssignments = selectedProject
+        ? assignments.filter(
+            (assignment) =>
+              assignment.projectId === selectedProject.id &&
+              (selectedProject.status === 'completed' ||
+                isAssignmentActiveOn(assignment, projectById, today)),
+          )
+        : activeAssignments;
+      const visibleAssignments = reportAssignments.filter(
+        (assignment) =>
+          projectIds.has(assignment.projectId) &&
+          allScopedIds.has(assignment.employeeId),
       );
+
+      const projectRows = reportProjects.map((project) => {
+        const list = visibleAssignments.filter(
+          (assignment) => assignment.projectId === project.id,
+        );
+        const participants = new Set(list.map((assignment) => assignment.employeeId)).size;
+        const total = list.reduce((sum, assignment) => sum + assignment.allocation, 0);
+        const manager = project.managerId ? employeeById.get(project.managerId) : null;
+        return [
+          project.name,
+          project.code,
+          projectStatusMeta[project.status].label,
+          manager ? fullName(manager) : '—',
+          `${formatDate(project.startDate)} — ${project.endDate ? formatDate(project.endDate) : 'бессрочно'}`,
+          participants,
+          total,
+          participants ? Math.round(total / participants) : 0,
+        ] as CellValue[];
+      });
+
+      const detailRows = visibleAssignments
+        .map((assignment) => {
+          const employee = employeeById.get(assignment.employeeId);
+          const project = projectById.get(assignment.projectId);
+          const absence = employee
+            ? findEmployeeAbsenceNote(absencesQuery.data ?? [], employee.id, today)
+            : null;
+          const absenceText = absence
+            ? `${absenceTypeMeta[absence.absence.type].label} ${
+                absence.active ? 'до' : 'с'
+              } ${formatDate(
+                absence.active ? absence.absence.endDate : absence.absence.startDate,
+              )}`
+            : '—';
+          return {
+            project: project?.name ?? assignment.projectId,
+            code: project?.code ?? '',
+            employee: employee ? fullName(employee) : assignment.employeeId,
+            department: employee
+              ? departmentById.get(employee.departmentId)?.name ?? '—'
+              : '—',
+            role: assignment.projectRole,
+            allocation: assignment.allocation,
+            period: `${formatDate(assignment.startDate)} — ${
+              assignment.endDate ? formatDate(assignment.endDate) : 'бессрочно'
+            }`,
+            absence: absenceText,
+          };
+        })
+        .sort(
+          (a, b) =>
+            a.project.localeCompare(b.project, 'ru') ||
+            b.allocation - a.allocation ||
+            a.employee.localeCompare(b.employee, 'ru'),
+        )
+        .map((row) => [
+          row.project,
+          row.code,
+          row.employee,
+          row.department,
+          row.role,
+          row.allocation,
+          row.period,
+          row.absence,
+        ] as CellValue[]);
+
+      const uniqueEmployees = new Set(
+        visibleAssignments.map((assignment) => assignment.employeeId),
+      ).size;
+      const totalAllocation = visibleAssignments.reduce(
+        (sum, assignment) => sum + assignment.allocation,
+        0,
+      );
+
       return {
-        title: `Расчётная ведомость · ${periodLabel}`,
-        subtitle: `${deptName} · демо-расчёт, НДФЛ 13% справочно`,
+        title: `Загруженность проектов и команды · ${formatDate(today)}`,
+        subtitle: `${deptName} · проектов ${projectRows.length} · сотрудников ${uniqueEmployees}`,
         tables: [
           {
-            columns: ['Сотрудник', 'Подразделение', 'Оклад', 'Норма', 'Оплачено', 'Премия', 'Начислено', 'НДФЛ', 'К выплате', 'Статус'],
-            rows: rowsData,
-            moneyColumns: [2, 5, 6, 7, 8],
+            title: 'Проекты',
+            columns: [
+              'Проект',
+              'Код',
+              'Статус',
+              'Руководитель',
+              'Период',
+              'Участников',
+              'Суммарная загрузка, %',
+              'Средняя загрузка, %',
+            ],
+            rows: projectRows,
+          },
+          {
+            title: 'Сотрудники в проектах',
+            columns: [
+              'Проект',
+              'Код',
+              'Сотрудник',
+              'Подразделение',
+              'Роль в проекте',
+              'Загрузка, %',
+              'Период',
+              'Отсутствие',
+            ],
+            rows: detailRows,
           },
           {
             title: 'Итоги',
-            columns: ['Показатель', 'Премии', 'Начислено', 'НДФЛ', 'К выплате'],
-            rows: [['Всего', totals.bonus, totals.gross, totals.ndfl, totals.net]],
-            moneyColumns: [1, 2, 3, 4],
+            columns: ['Показатель', 'Значение'],
+            rows: [
+              ['Проектов', projectRows.length],
+              ['Сотрудников', uniqueEmployees],
+              ['Назначений', visibleAssignments.length],
+              [
+                'Средняя загрузка, %',
+                uniqueEmployees ? Math.round(totalAllocation / uniqueEmployees) : 0,
+              ],
+            ],
           },
         ],
       };
@@ -243,7 +382,7 @@ export function ReportsPage() {
       const activeProjectIds = new Set(activeProjects.map((project) => project.id));
       const employeeRows = scopedEmployees
         .map((employee) => {
-          const employeeAssignments = assignments.filter(
+          const employeeAssignments = activeAssignments.filter(
             (item) => item.employeeId === employee.id && activeProjectIds.has(item.projectId),
           );
           const total = employeeAssignments.reduce((sum, item) => sum + item.allocation, 0);
@@ -263,7 +402,7 @@ export function ReportsPage() {
         })
         .sort((a, b) => Number(b[3]) - Number(a[3]));
       const projectRows = activeProjects.map((project) => {
-          const list = assignments.filter(
+          const list = activeAssignments.filter(
             (assignment) => assignment.projectId === project.id && scopedIds.has(assignment.employeeId),
           );
           return [
@@ -424,10 +563,13 @@ export function ReportsPage() {
     scopedIds,
     allScopedIds,
     timesheetQuery.data,
-    payrollQuery.data,
     eventsQuery.data,
     assignmentsQuery.data,
+    absencesQuery.data,
     assignments,
+    activeAssignments,
+    projectFilter,
+    today,
     departments,
     projects,
     departmentById,
@@ -440,11 +582,9 @@ export function ReportsPage() {
   const activeQuery =
     report === 'timesheet'
       ? timesheetQuery
-      : report === 'payroll'
-        ? payrollQuery
-        : report === 'movement'
-          ? eventsQuery
-          : assignmentsQuery;
+      : report === 'movement'
+        ? eventsQuery
+        : assignmentsQuery;
 
   const handleExport = () => {
     if (!data) return;
@@ -468,9 +608,9 @@ export function ReportsPage() {
     <div>
       <div className="no-print">
         <PageHeader
-          eyebrow="Финансы и отчёты"
+          eyebrow="Аналитика"
           title="Отчёты"
-          description="Аналитические выгрузки за месяц: табель, зарплата, загрузка и движение кадров"
+          description="Аналитические выгрузки за месяц: табель, загрузка и движение кадров"
           actions={
             <>
               {monthDependent ? <MonthSwitcher value={period} onChange={setPeriod} /> : null}
@@ -495,7 +635,7 @@ export function ReportsPage() {
         />
         <StatCard
           label="Сотрудников в выборке"
-          value={reportEmployees.length}
+          value={projectTeamEmployeeCount}
           hint={
             scopedDepartmentId
               ? departmentById.get(scopedDepartmentId)?.name ?? '—'
@@ -539,6 +679,21 @@ export function ReportsPage() {
               Подразделение: {departmentById.get(managerDepartmentId)?.name ?? '—'}
             </Badge>
           )}
+          {report === 'projectTeams' ? (
+            <Select
+              value={projectFilter}
+              onChange={(event) => setProjectFilter(event.target.value)}
+              className="w-auto min-w-[220px]"
+              aria-label="Проект"
+            >
+              <option value="">Все проекты</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.code} · {project.name}
+                </option>
+              ))}
+            </Select>
+          ) : null}
           <span className="ml-auto flex items-center gap-1.5 text-[11px] text-muted">
             <Info className="size-3.5" /> {metaDescription}
           </span>
@@ -626,7 +781,8 @@ export function ReportsPage() {
               Сформировано {new Date().toLocaleString('ru-RU')} · система кадрового учёта (демо)
             </span>
             <span>
-              {reportEmployees.length} {plural(reportEmployees.length, ['сотрудник', 'сотрудника', 'сотрудников'])} в выборке
+              {projectTeamEmployeeCount}{' '}
+              {plural(projectTeamEmployeeCount, ['сотрудник', 'сотрудника', 'сотрудников'])} в выборке
             </span>
           </div>
         </Card>

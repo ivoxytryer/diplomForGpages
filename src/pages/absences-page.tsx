@@ -14,12 +14,12 @@ import {
   datesOfMonth,
   formatDate,
   fullName,
-  isWeekend,
   monthKey,
   monthLabel,
   plural,
   shortName,
 } from '@/shared/lib/utils';
+import { getCalendarDay, isRedDay } from '@/shared/lib/calendar';
 import { AbsenceForm } from '@/features/absences/absence-form';
 import { AbsenceApprovalDialog } from '@/features/absences/absence-approval-dialog';
 import { MonthSwitcher, PageHeader, SearchInput } from '@/shared/ui/page';
@@ -91,23 +91,8 @@ export function AbsencesPage() {
     onError: (error) => toast.error('Не удалось обновить статус', getErrorMessage(error)),
   });
 
-  const requestApproval = async (absence: Absence) => {
-    if (absence.type === 'sick' || absence.type === 'business_trip') {
-      try {
-        const tasks = await api.tasks.list({
-          employeeId: absence.employeeId,
-          status: 'todo',
-        });
-        if (tasks.length) {
-          setApprovalTarget(absence);
-          return;
-        }
-      } catch (error) {
-        toast.error('Не удалось проверить задачи', getErrorMessage(error));
-        return;
-      }
-    }
-    statusMutation.mutate({ id: absence.id, next: 'approved' });
+  const requestApproval = (absence: Absence) => {
+    setApprovalTarget(absence);
   };
 
   const visibleEmployees = useMemo(() => {
@@ -296,7 +281,12 @@ export function AbsencesPage() {
                       <TD className="whitespace-nowrap text-xs">
                         {formatDate(absence.startDate)} — {formatDate(absence.endDate)}
                       </TD>
-                      <TD className="text-xs text-muted">{absence.days}</TD>
+                      <TD
+                        className="text-xs text-muted"
+                        title={`Рабочих: ${absence.workingDays ?? '—'} · календарных: ${absence.calendarDays ?? '—'}`}
+                      >
+                        {absence.days}
+                      </TD>
                       <TD>
                         <Badge tone={absenceStatusMeta[absence.status].tone}>
                           {absenceStatusMeta[absence.status].label}
@@ -362,6 +352,9 @@ export function AbsencesPage() {
               <div key={`empty-${index}`} className="min-h-[96px] border-b border-r border-border bg-surface-2/40" />
             ))}
             {dates.map((date) => {
+              const calendarDay = getCalendarDay(date);
+              const red = isRedDay(date);
+              const weekend = calendarDay.kind === 'weekend';
               const dayAbsences = absences.filter(
                 (absence) =>
                   absence.status !== 'rejected' &&
@@ -372,11 +365,12 @@ export function AbsencesPage() {
                 <div
                   key={date}
                   className={`min-h-[96px] border-b border-r border-border p-1.5 ${
-                    isWeekend(date) ? 'bg-surface-2/50' : ''
+                    red ? 'bg-danger/5' : weekend ? 'bg-surface-2/50' : ''
                   }`}
+                  title={calendarDay.name}
                 >
                   <div className="mb-1 flex items-center justify-between">
-                    <span className={`text-[11px] font-medium ${isWeekend(date) ? 'text-muted' : 'text-fg'}`}>
+                    <span className={`text-[11px] font-medium ${red ? 'text-danger' : weekend ? 'text-muted' : 'text-fg'}`}>
                       {dayjs(date).format('D')}
                     </span>
                     {dayAbsences.length > 0 ? (

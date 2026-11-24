@@ -11,14 +11,12 @@ describe('can', () => {
     expect(can('legacy' as Role, 'employees:read')).toBe(false);
   });
 
-  it('keeps destructive and payroll actions away from HR', () => {
+  it('keeps destructive actions away from HR', () => {
     expect(can('hr', 'employees:write')).toBe(true);
     expect(can('hr', 'employees:delete')).toBe(false);
     expect(can('hr', 'employees:dismiss')).toBe(false);
     expect(can('hr', 'timesheet:edit')).toBe(true);
     expect(can('hr', 'timesheet:approve')).toBe(true);
-    expect(can('hr', 'payroll:read')).toBe(true);
-    expect(can('hr', 'payroll:write')).toBe(false);
     expect(can('hr', 'salary:read')).toBe(true);
     expect(can('hr', 'salary:write')).toBe(false);
     expect(can('manager', 'salary:read')).toBe(true);

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  BarChart3,
   CalendarRange,
   FolderKanban,
   Gauge,
@@ -19,6 +20,7 @@ import { can } from '@/shared/lib/permissions';
 import { findEmployeeAbsenceNote } from '@/shared/lib/absences';
 import { absenceTypeMeta, projectStatusMeta } from '@/shared/lib/meta';
 import { formatDate, fullName, todayISO } from '@/shared/lib/utils';
+import { isAssignmentActive } from '@/shared/lib/workload';
 import { AssignmentForm } from '@/features/projects/assignment-form';
 import { ProjectForm } from '@/features/projects/project-form';
 import { TaskForm } from '@/features/tasks/task-form';
@@ -104,8 +106,8 @@ export function ProjectPage() {
     can(user?.role, 'tasks:write') && (user?.role === 'admin' || isProjectManager);
   const assignments = assignmentsQuery.data ?? [];
   const today = todayISO();
-  const activeAssignments = assignments.filter(
-    (assignment) => !assignment.endDate || assignment.endDate >= today,
+  const activeAssignments = assignments.filter((assignment) =>
+    isAssignmentActive(assignment, project, today),
   );
   const totalAllocation = activeAssignments.reduce((sum, assignment) => sum + assignment.allocation, 0);
   const teamSize = new Set(activeAssignments.map((assignment) => assignment.employeeId)).size;
@@ -136,6 +138,12 @@ export function ProjectPage() {
         description={project.description || 'Описание проекта не заполнено'}
         actions={
           <>
+            <Link
+              to={`/reports?report=projectTeams&project=${project.id}`}
+              className="inline-flex h-9 items-center gap-2 border border-border bg-surface px-3 text-xs font-medium text-fg transition-colors hover:border-fg"
+            >
+              <BarChart3 className="size-4" /> Отчёт по проекту
+            </Link>
             {canManageTeam ? (
               <Button
                 variant="outline"
@@ -404,7 +412,7 @@ export function ProjectPage() {
                   ? 'Поставьте первую задачу участнику команды.'
                   : 'Руководитель ещё не поставил задачи по этому проекту.'
             }
-            onToggle={(task, done) => toggle.mutate({ task, done })}
+            onToggle={(task, done, comment) => toggle.mutate({ task, done, comment })}
             onPostpone={(task) => postpone.mutate(task)}
             onEdit={(task) => {
               setEditingTask(task);

@@ -271,7 +271,7 @@ export function TasksPage() {
                   ? 'Создайте первую задачу для сотрудника, назначенного на проект.'
                   : 'Как только руководитель поставит задачу, она появится здесь.'
             }
-            onToggle={(task, done) => toggle.mutate({ task, done })}
+            onToggle={(task, done, comment) => toggle.mutate({ task, done, comment })}
             onPostpone={(task) => postpone.mutate(task)}
             onEdit={openEdit}
             onDelete={setDeleting}

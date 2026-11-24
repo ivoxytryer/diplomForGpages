@@ -62,8 +62,6 @@ export const TIMESHEET_STATUSES = [
   'approved',
 ] as const satisfies readonly TimesheetStatus[];
 
-export const PAYROLL_STATUSES = ['draft', 'approved'] as const;
-
 /** Профессиональные ветки внутри подразделений. */
 export const POSITION_FAMILIES = [
   'Руководство',

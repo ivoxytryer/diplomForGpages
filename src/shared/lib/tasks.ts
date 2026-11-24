@@ -1,19 +1,9 @@
 import dayjs from 'dayjs';
 import type { ProjectTask } from '@/shared/types';
-import { isWeekend, todayISO } from './utils';
+import { nextWorkingDay } from './calendar';
+import { todayISO } from './utils';
 
-/**
- * Следующий рабочий день после указанной даты.
- * Используется при переносе задачи («потребовалось больше времени»):
- * пятница → понедельник, суббота/воскресенье → понедельник.
- */
-export function nextWorkingDay(value: string) {
-  let date = dayjs(value).startOf('day').add(1, 'day');
-  while (isWeekend(date)) {
-    date = date.add(1, 'day');
-  }
-  return date.format('YYYY-MM-DD');
-}
+export { nextWorkingDay };
 
 /**
  * Новая плановая дата задачи при переносе.

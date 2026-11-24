@@ -2,6 +2,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import 'dayjs/locale/ru';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { normDaysOfMonth as calendarNormDays, workingDaysBetween } from './calendar';
 
 dayjs.locale('ru');
 
@@ -62,19 +63,14 @@ export function isWeekend(value: DateInput) {
   return day === 0 || day === 6;
 }
 
+/** Норма рабочих дней месяца с учётом производственного календаря. */
 export function normDaysOfMonth(month: string) {
-  return datesOfMonth(month).filter((date) => !isWeekend(date)).length;
+  return calendarNormDays(month);
 }
 
+/** Рабочие дни периода с учётом праздников и переносов. */
 export function businessDaysBetween(start: string, end: string) {
-  let from = dayjs(start).startOf('day');
-  const to = dayjs(end).startOf('day');
-  let count = 0;
-  while (from.isBefore(to) || from.isSame(to)) {
-    if (!isWeekend(from)) count += 1;
-    from = from.add(1, 'day');
-  }
-  return count;
+  return workingDaysBetween(start, end);
 }
 
 export function getInitials(lastName: string, firstName: string, middleName?: string) {

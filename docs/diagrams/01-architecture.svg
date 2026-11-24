@@ -22,7 +22,7 @@
   <foreignObject x="602" y="168" width="426" height="203">
     <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">
       <div style="font-size:21px;font-weight:650;line-height:1.15;margin-bottom:6px;">API · /api/v1</div>
-      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• auth, employees, directories</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• projects, assignments, tasks</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• timesheet, absences</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• payroll, reports, users, audit</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• MSW в демо; FastAPI в цели</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• Проверки ролей и области видимости</div>
+      <div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• auth, employees, directories</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• projects, assignments, tasks</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• timesheet, absences</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• reports, users, audit</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• MSW в демо; FastAPI в цели</div><div style="margin-top:5px;color:#6b7280;font-size:15px;line-height:1.3;">• Проверки ролей и области видимости</div>
     </div>
   </foreignObject>
 </g><g>

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Absence } from '@/shared/types';
-import { findAbsenceOverlap, findEmployeeAbsenceNote, periodsOverlap } from './absences';
+import {
+  absenceDayBreakdown,
+  findAbsenceOverlap,
+  findEmployeeAbsenceNote,
+  periodsOverlap,
+} from './absences';
 
 function absence(overrides: Partial<Absence>): Absence {
   return {
@@ -73,6 +78,17 @@ describe('absence overlap helpers', () => {
         excludeId: 'ab1',
       }),
     ).toBeUndefined();
+  });
+
+  it('считает дни отсутствия по типу и календарю', () => {
+    // 1–10 мая 2026: праздники 1 и 9 мая, выходные 2–3 и 10 мая.
+    expect(absenceDayBreakdown('vacation', '2026-05-01', '2026-05-10')).toEqual({
+      days: 8,
+      workingDays: 5,
+      calendarDays: 10,
+    });
+    expect(absenceDayBreakdown('sick', '2026-05-01', '2026-05-10').days).toBe(10);
+    expect(absenceDayBreakdown('business_trip', '2026-05-01', '2026-05-10').days).toBe(5);
   });
 
   it('показывает текущее и ближайшее будущее отсутствие', () => {

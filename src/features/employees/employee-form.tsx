@@ -239,7 +239,6 @@ export function EmployeeForm({
     queryClient.invalidateQueries({ queryKey: ['employees'] });
     queryClient.invalidateQueries({ queryKey: ['employee'] });
     queryClient.invalidateQueries({ queryKey: ['timesheet'] });
-    queryClient.invalidateQueries({ queryKey: ['payroll'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['events'] });
     queryClient.invalidateQueries({ queryKey: ['workload'] });

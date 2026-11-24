@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { calculateLoad } from '@/shared/lib/workload';
+import { todayISO } from '@/shared/lib/utils';
 import { createSeed } from './data';
 
 const db = createSeed();
@@ -18,6 +20,7 @@ describe('seed data integrity', () => {
       db.assignments,
       db.projectTasks,
       db.absences,
+      db.absenceTaskDecisions,
       db.events,
       db.users,
     ];
@@ -66,6 +69,26 @@ describe('seed data integrity', () => {
     db.users.forEach((user) => {
       if (user.employeeId) expect(employeeIds.has(user.employeeId)).toBe(true);
     });
+    db.absenceTaskDecisions.forEach((decision) => {
+      const absence = db.absences.find((item) => item.id === decision.absenceId);
+      const task = db.projectTasks.find((item) => item.id === decision.taskId);
+      expect(absence).toBeTruthy();
+      expect(task).toBeTruthy();
+      expect(employeeIds.has(decision.fromEmployeeId)).toBe(true);
+      if (decision.toEmployeeId) expect(employeeIds.has(decision.toEmployeeId)).toBe(true);
+    });
+  });
+
+  it('не создаёт сотрудников с активной загрузкой выше 100%', () => {
+    const today = todayISO();
+    db.employees
+      .filter((employee) => employee.status !== 'dismissed')
+      .forEach((employee) => {
+        expect(
+          calculateLoad(db.assignments, db.projects, employee.id, today),
+          `${employee.lastName} ${employee.firstName}`,
+        ).toBeLessThanOrEqual(100);
+      });
   });
 
   it('has consistent ranges, dates and unique emails', () => {

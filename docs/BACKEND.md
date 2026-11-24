@@ -76,7 +76,6 @@ app/
 │   ├── timesheet.py
 │   ├── absences.py
 │   ├── events.py
-│   ├── payroll.py
 │   ├── dashboard.py
 │   ├── users.py
 │   └── audit.py
@@ -107,7 +106,6 @@ employees ──< project_tasks >── projects
 employees ──< absences
 employees ──< hr_events
 employees ──< timesheet_entries
-employees ──< payslips
 audit_log
 ```
 
@@ -125,15 +123,14 @@ audit_log
 | `absences` | Отпуска/больничные | `type`, `status`, `start_date`, `end_date`, `CHECK end_date >= start_date` |
 | `hr_events` | Кадровые события | `type`, `date`, `from/to department/position`, `old/new salary` |
 | `timesheet_entries` | Табель | `employee_id`, `date`, `code`, `hours`, `is_override`, `UNIQUE(employee_id, date)` |
-| `payslips` | Расчётные листы | `employee_id`, `period`, `base_salary`, `norm_days`, `paid_days`, `bonus`, `gross`, `ndfl`, `net`, `UNIQUE(employee_id, period)` |
 | `audit_log` | Журнал действий | `at`, `user_id`, `action`, `entity`, `entity_id`, `details JSONB`, append-only |
 
 ### Ограничения, которые стоит показать в записке
 
-- `UNIQUE(employee_id, date)` в табеле и `UNIQUE(employee_id, period)` в расчётных листах.
+- `UNIQUE(employee_id, date)` в табеле.
 - `CHECK(allocation BETWEEN 0 AND 100)`, `CHECK(salary >= 0)`, `CHECK(end_date >= start_date)`.
 - FK с `ON DELETE RESTRICT` для справочников и `ON DELETE CASCADE` для дочерних записей.
-- Индексы: `employees(department_id)`, `employees(status)`, `absences(employee_id, start_date, end_date)`, `timesheet_entries(employee_id, date)`, `payslips(employee_id, period)`, `project_tasks(employee_id, status, due_date)`, `project_tasks(project_id)`.
+- Индексы: `employees(department_id)`, `employees(status)`, `absences(employee_id, start_date, end_date)`, `timesheet_entries(employee_id, date)`, `project_tasks(employee_id, status, due_date)`, `project_tasks(project_id)`.
 - `project_tasks.employee_id` должен ссылаться на существующее назначение `(project_id, employee_id)`; проверку удобно выполнять в сервисе, чтобы не дублировать составной FK.
 - Запрет пересекающихся согласованных отпусков:
   `EXCLUDE USING gist (employee_id WITH =, daterange(start_date, end_date, '[]') WITH &&)`
@@ -179,7 +176,7 @@ audit_log
 - `hr` — всё, кроме управления пользователями и журнала (по матрице из `docs/API.md`).
 - `manager` — чтение сотрудников и данных своего подразделения; проекты, назначения
   и задачи — только там, где он `project.manager_id`.
-- `employee` — только своя карточка, свои отсутствия, табель, загрузка и расчётные листы.
+- `employee` — только своя карточка, свои отсутствия, табель и загрузка.
 
 Любая попытка прочитать чужое — `403`, а не «пустой список». Это важнее, чем красивые
 кнопки: проверяется прямой запрос через curl.
@@ -214,8 +211,10 @@ audit_log
 - Согласование — **одна транзакция**: обновить заявку, статус сотрудника, табель, аудит.
 - Запрет `end_date < start_date` и пересечений с заявками в статусах `pending`/`approved`
   (при согласовании — с уже утверждёнными отсутствиями).
-- Согласование `sick` и `business_trip` дополнительно требует, чтобы у сотрудника
-  не было активных задач: сначала их переназначают, иначе `400`.
+- Согласование `sick`, `business_trip` и `vacation` не блокируется активными задачами:
+  по каждой задаче передаётся решение `keep` или `reassign`. Для `reassign` проверяются
+  проект, статус сотрудника, отсутствие пересекающегося согласованного отсутствия
+  и загрузка меньше 100%.
 - Отклонение возвращает статус сотрудника к `active`/`probation`.
 
 ### Проекты и команда
@@ -256,14 +255,6 @@ audit_log
 - `status = done` выставляет `completed_at`; возврат в `todo` очищает его.
 - Все изменения пишутся в аудит с `entity = task`.
 
-### Зарплата
-
-- Формула и округление повторяют `src/features/payroll/calc.ts`:
-  `gross = оклад / норма × оплаченные дни + премия`, `ndfl = round(gross × 0.13)`.
-- `POST /payroll/calculate` идемпотентен за период: пересчитывает черновики,
-  утверждённые листы не трогает.
-- `PATCH /payroll/{id}` пересчитывает суммы после изменения премии.
-
 ### Отчёты и дашборд
 
 - Агрегаты считаются SQL-запросами, а не выгрузкой всех строк в браузер.
@@ -272,8 +263,7 @@ audit_log
 
 ### Аудит
 
-- Пишется на каждое изменение: создание, обновление, удаление, смену статуса,
-  расчёт зарплаты, вход.
+- Пишется на каждое изменение: создание, обновление, удаление, смену статуса, вход.
 - Поля: кто, когда, действие, объект, `before/after` в `JSONB`, request id.
 - Append-only: API не позволяет изменить или удалить запись.
 
@@ -304,10 +294,10 @@ audit_log
 
 | Уровень | Инструмент | Что проверять |
 | --- | --- | --- |
-| Unit | pytest | Формула зарплаты, расчёт дней, коды табеля, валидаторы |
+| Unit | pytest | Расчёт дней, коды табеля, валидаторы |
 | Integration | pytest + httpx + PostgreSQL | Эндпоинты, права ролей, транзакции, ограничения БД |
 | Contract | OpenAPI-схема | Соответствие ответов `docs/API.md` и `src/shared/types.ts` |
-| E2E | Playwright | Вход, CRUD сотрудника, согласование отпуска, табель, зарплата |
+| E2E | Playwright | Вход, CRUD сотрудника, согласование отпуска, табель |
 
 Почему не только Postman: коллекция не даёт регрессии, не запускается в CI и не
 доказывает воспроизводимость. Почему реальная БД, а не SQLite в тестах: нужно проверять
@@ -325,7 +315,6 @@ FK, CHECK, `EXCLUDE`, транзакции и конкурентность — �
 - согласование отпуска: статус заявки, статус сотрудника, табель, аудит;
 - задачи: создание только для участника проекта, запрет по завершённому проекту,
   права HR/manager/employee, перенос на следующий рабочий день и `carry_history`;
-- расчёт зарплаты и пересчёт после изменения премии;
 - пагинация и фильтры сотрудников;
 - ограничения БД (уникальность, CHECK, пересечение отпусков).
 
@@ -413,7 +402,7 @@ VITE_USE_MOCKS=false
 | 1 | Docker Compose, PostgreSQL, SQLAlchemy-модели, Alembic, seed из `src/mocks/data.ts` |
 | 2 | JWT, пользователи, RBAC, сотрудники и справочники + pytest |
 | 3 | Табель, отсутствия, кадровые события + транзакции |
-| 4 | Зарплата, аудит, дашборд и отчёты, серверные агрегаты |
+| 4 | Аудит, дашборд и отчёты, серверные агрегаты |
 | 5 | Ограничения БД, индексы, тесты прав и бизнес-правил, E2E Playwright |
 | 6 | Docker-сборка, README/ER/UML, программа испытаний, демо-сценарий |
 
@@ -433,7 +422,7 @@ VITE_USE_MOCKS=false
 - миграции применяются на пустой БД;
 - тесты проходят в CI;
 - есть OpenAPI, ER-диаграмма, README и руководство пользователя;
-- описаны допущения: упрощённая зарплата, отсутствие интеграции с 1С и бухгалтерией.
+- описаны допущения: отсутствие интеграции с 1С и бухгалтерией.
 
 ---
 
@@ -458,7 +447,7 @@ VITE_USE_MOCKS=false
 > целостность и транзакционность для кадровых данных; модульный монолит выбран вместо
 > микросервисов, потому что система разворачивается на одном узле, а сложность
 > распределённой инфраструктуры не даёт функциональных преимуществ в рамках диплома.
-> Все критичные правила — расчёт табеля, согласование отпусков, зарплата, права доступа —
+> Все критичные правила — расчёт табеля, согласование отпусков, права доступа —
 > реализованы на сервере, чтобы их нельзя было обойти через клиент».
 
 ---
@@ -470,4 +459,3 @@ VITE_USE_MOCKS=false
 - [`README.md`](../README.md) — запуск фронтенда, демо-аккаунты, переключение на FastAPI.
 - `src/shared/types.ts` — типы, которые ожидает фронтенд.
 - `src/mocks/data.ts` — исходные данные для seed.
-- `src/features/payroll/calc.ts` — эталонная формула демо-расчёта.

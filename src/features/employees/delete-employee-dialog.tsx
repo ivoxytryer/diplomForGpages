@@ -55,7 +55,6 @@ export function DeleteEmployeeDialog({
       queryClient.invalidateQueries({ queryKey: ['employee'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['timesheet'] });
-      queryClient.invalidateQueries({ queryKey: ['payroll'] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.invalidateQueries({ queryKey: ['workload'] });
       queryClient.invalidateQueries({ queryKey: ['audit'] });
@@ -85,8 +84,8 @@ export function DeleteEmployeeDialog({
     >
       <div className="space-y-4">
         <div className="rounded-lg border border-danger/30 px-3 py-2 text-xs leading-5 text-danger">
-          Удаление необратимо: пропадут связанные задачи, назначения, отсутствия, события,
-          расчётные листы и табель. Для увольнения используйте статус «Уволен».
+          Удаление необратимо: пропадут связанные задачи, назначения, отсутствия, события
+          и табель. Для увольнения используйте статус «Уволен».
         </div>
         {employee ? (
           <TaskReassignBlock

@@ -23,9 +23,20 @@ export function useTaskActions() {
   };
 
   const toggle = useMutation({
-    mutationFn: ({ task, done }: { task: ProjectTask; done: boolean }) => {
+    mutationFn: ({
+      task,
+      done,
+      comment,
+    }: {
+      task: ProjectTask;
+      done: boolean;
+      comment?: string;
+    }) => {
       setBusyId(task.id);
-      return api.tasks.update(task.id, { status: done ? 'done' : 'todo' });
+      return api.tasks.update(task.id, {
+        status: done ? 'done' : 'todo',
+        completionComment: done ? comment : undefined,
+      });
     },
     onSuccess: (updated) => {
       invalidate();

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
-import type { ProjectTask } from '@/shared/types';
+import type { Absence, ProjectTask } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
 import { can, canViewSalary } from '@/shared/lib/permissions';
@@ -34,19 +34,21 @@ import {
   timesheetStatusMeta,
 } from '@/shared/lib/meta';
 import { isTaskDueToday, isTaskOverdue } from '@/shared/lib/tasks';
+import { getCalendarDay, isRedDay } from '@/shared/lib/calendar';
+import { isAssignmentActive } from '@/shared/lib/workload';
 import {
   ageLabel,
   datesOfMonth,
   formatDate,
   formatMoney,
   fullName,
-  isWeekend,
   monthKey,
-  monthLabel,
   plural,
+  todayISO,
 } from '@/shared/lib/utils';
 import { EmployeeForm } from '@/features/employees/employee-form';
 import { AbsenceForm } from '@/features/absences/absence-form';
+import { AbsenceApprovalDialog } from '@/features/absences/absence-approval-dialog';
 import { EventForm } from '@/features/events/event-form';
 import { CreateUserDialog } from '@/features/users/create-user-dialog';
 import { TaskForm } from '@/features/tasks/task-form';
@@ -88,6 +90,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
   const [month, setMonth] = useState(monthKey());
   const [editOpen, setEditOpen] = useState(false);
   const [absenceOpen, setAbsenceOpen] = useState(false);
+  const [approvalTarget, setApprovalTarget] = useState<Absence | null>(null);
   const [eventOpen, setEventOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
@@ -135,18 +138,10 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
     enabled: Boolean(id) && canManageAccounts,
   });
 
-  const canPayroll = can(user?.role, 'payroll:read');
-
   const timesheetQuery = useQuery({
     queryKey: ['timesheet', month, id],
     queryFn: () => api.timesheet.get({ month, employeeId: id }),
     enabled: Boolean(id) && tab === 'timesheet',
-  });
-
-  const payslipsQuery = useQuery({
-    queryKey: ['payroll', month],
-    queryFn: () => api.payroll.list(month),
-    enabled: canPayroll && tab === 'payslips',
   });
 
   const statusMutation = useMutation({
@@ -209,8 +204,9 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
   const openTasks = tasks.filter((task) => task.status === 'todo');
   const overdueTasks = openTasks.filter((task) => isTaskOverdue(task));
   const todayTasks = openTasks.filter((task) => isTaskDueToday(task));
-  const activeAssignments = assignments.filter(
-    (assignment) => projectById.get(assignment.projectId)?.status !== 'completed',
+  const today = todayISO();
+  const activeAssignments = assignments.filter((assignment) =>
+    isAssignmentActive(assignment, projectById.get(assignment.projectId), today),
   );
   const canCreateTask =
     canManageTasks && employee.status !== 'dismissed' && activeAssignments.length > 0;
@@ -235,15 +231,12 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
     { value: 'projects', label: 'Проекты', count: assignments.length },
     { value: 'tasks', label: 'Задачи', count: openTasks.length },
     { value: 'events', label: 'События', count: events.length },
-    ...(canPayroll ? [{ value: 'payslips', label: 'Расчётные листы' }] : []),
   ];
 
   const timesheetRow = timesheetQuery.data?.rows[0];
   const monthDates = datesOfMonth(month);
   const firstDay = dayjs(`${month}-01`);
   const offset = (firstDay.day() + 6) % 7;
-
-  const myPayslips = (payslipsQuery.data ?? []).filter((payslip) => payslip.employeeId === employee.id);
 
   return (
     <div>
@@ -580,15 +573,22 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                   const cell = timesheetRow.days.find((item) => item.date === date);
                   const code = cell?.code ?? 'В';
                   const codeMeta = timesheetCodeMeta[code];
+                  const calendarDay = getCalendarDay(date);
+                  const red = isRedDay(date);
+                  const weekend = calendarDay.kind === 'weekend';
                   return (
                     <div
                       key={date}
                       className={`rounded-lg border p-1.5 text-center ${
-                        isWeekend(date) ? 'border-border/50 bg-surface-2/60' : 'border-border bg-surface'
+                        red
+                          ? 'border-danger/30 bg-danger/5'
+                          : weekend
+                            ? 'border-border/50 bg-surface-2/60'
+                            : 'border-border bg-surface'
                       }`}
-                      title={`${formatDate(date)} — ${codeMeta.label}${cell?.hours ? `, ${cell.hours} ч` : ''}`}
+                      title={`${formatDate(date)} — ${codeMeta.label}${calendarDay.name ? ` (${calendarDay.name})` : ''}${cell?.hours ? `, ${cell.hours} ч` : ''}`}
                     >
-                      <p className="text-[10px] text-muted">{dayjs(date).format('D')}</p>
+                      <p className={`text-[10px] ${red ? 'text-danger' : 'text-muted'}`}>{dayjs(date).format('D')}</p>
                       <Badge tone={codeMeta.tone} className="mt-1 px-1.5 py-0 text-[10px]">
                         {codeMeta.short}
                       </Badge>
@@ -637,7 +637,12 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                     <TD className="whitespace-nowrap text-xs">
                       {formatDate(absence.startDate)} — {formatDate(absence.endDate)}
                     </TD>
-                    <TD className="text-xs text-muted">{absence.days}</TD>
+                    <TD
+                      className="text-xs text-muted"
+                      title={`Рабочих: ${absence.workingDays ?? '—'} · календарных: ${absence.calendarDays ?? '—'}`}
+                    >
+                      {absence.days}
+                    </TD>
                     <TD>
                       <Badge tone={absenceStatusMeta[absence.status].tone}>
                         {absenceStatusMeta[absence.status].label}
@@ -651,7 +656,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                           <div className="flex justify-end gap-1">
                             <button
                               type="button"
-                              onClick={() => statusMutation.mutate({ absenceId: absence.id, status: 'approved' })}
+                              onClick={() => setApprovalTarget(absence)}
                               className="inline-flex size-8 items-center justify-center rounded-md text-fg transition hover:bg-surface-2"
                               title="Согласовать"
                             >
@@ -769,7 +774,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                     ? 'Поставьте первую задачу по одному из проектов сотрудника.'
                     : 'Руководитель ещё не поставил задачи.'
               }
-              onToggle={(task, done) => toggle.mutate({ task, done })}
+              onToggle={(task, done, comment) => toggle.mutate({ task, done, comment })}
               onPostpone={(task) => postpone.mutate(task)}
               onEdit={(task) => {
                 setEditingTask(task);
@@ -813,56 +818,12 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
         </Card>
       ) : null}
 
-      {tab === 'payslips' ? (
-        <Card className="mt-4 overflow-hidden">
-          <CardHeader
-            title="Расчётные листы"
-            description="Упрощённый демо-расчёт: оклад / норма × оплаченные дни + премия, НДФЛ 13% справочно"
-            actions={<MonthSwitcher value={month} onChange={setMonth} />}
-          />
-          {payslipsQuery.isLoading ? (
-            <div className="p-5">
-              <Skeleton className="h-40 w-full" />
-            </div>
-          ) : myPayslips.length === 0 ? (
-            <EmptyState
-              title="Расчётный лист не сформирован"
-              description="Расчёт выполняется в разделе «Зарплата» за выбранный месяц."
-              icon={CalendarDays}
-            />
-          ) : (
-            <Table>
-              <THead>
-                <tr>
-                  <TH>Период</TH>
-                  <TH>Оклад</TH>
-                  <TH>Норма / оплачено</TH>
-                  <TH>Премия</TH>
-                  <TH>Начислено</TH>
-                  <TH>НДФЛ</TH>
-                  <TH className="text-right">К выплате</TH>
-                </tr>
-              </THead>
-              <TBody>
-                {myPayslips.map((payslip) => (
-                  <TR key={payslip.id}>
-                    <TD className="capitalize">{monthLabel(`${payslip.period}-01`)}</TD>
-                    <TD className="text-xs">{formatMoney(payslip.baseSalary)}</TD>
-                    <TD className="text-xs text-muted">
-                      {payslip.normDays} / {payslip.paidDays}
-                    </TD>
-                    <TD className="text-xs">{formatMoney(payslip.bonus)}</TD>
-                    <TD className="text-xs">{formatMoney(payslip.gross)}</TD>
-                    <TD className="text-xs text-muted">−{formatMoney(payslip.ndfl)}</TD>
-                    <TD className="text-right text-xs font-semibold text-fg">{formatMoney(payslip.net)}</TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </Card>
-      ) : null}
-
+      <AbsenceApprovalDialog
+        open={Boolean(approvalTarget)}
+        absence={approvalTarget}
+        onClose={() => setApprovalTarget(null)}
+        onApproved={() => setApprovalTarget(null)}
+      />
       <EmployeeForm open={editOpen} onClose={() => setEditOpen(false)} employee={employee} />
       <EventForm
         open={eventOpen}

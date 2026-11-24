@@ -3,6 +3,9 @@ import dayjs from 'dayjs';
 import type {
   Absence,
   AbsencePayload,
+  AbsenceTaskDecision,
+  AbsenceTaskDecisionRecord,
+  AbsenceTaskHandover,
   Assignment,
   AssignmentPayload,
   AuditEntry,
@@ -17,7 +20,6 @@ import type {
   EmployeePayload,
   HrEvent,
   HrEventPayload,
-  Payslip,
   Position,
   PositionPayload,
   Project,
@@ -26,12 +28,12 @@ import type {
   ProjectTaskPayload,
   ProjectTaskUpdatePayload,
   Role,
+  TaskHandoverCandidate,
   TimesheetCode,
   TimesheetStatus,
   User,
 } from '@/shared/types';
 import {
-  businessDaysBetween,
   formatDate,
   fullName,
   monthKey,
@@ -41,27 +43,26 @@ import {
   absenceEventTitle,
   absenceEventType,
   absenceTypeMeta,
-  payrollStatusMeta,
   roleLabels,
   timesheetCodes,
   timesheetStatusMeta,
 } from '@/shared/lib/meta';
-import { findAbsenceOverlap } from '@/shared/lib/absences';
+import { absenceDayBreakdown, findAbsenceOverlap } from '@/shared/lib/absences';
 import { can, canApproveAbsence } from '@/shared/lib/permissions';
+import { calculateLoad, ADMIN_LOAD_LIMIT } from '@/shared/lib/workload';
+import { getCalendarDay, isWorkingDay } from '@/shared/lib/calendar';
 import {
   ABSENCE_STATUSES,
   ABSENCE_TYPES,
   EMPLOYEE_STATUSES,
   HR_EVENT_TYPES,
-  PAYROLL_STATUSES,
   PROJECT_STATUSES,
   PROJECT_TASK_STATUSES,
   ROLES,
   TIMESHEET_STATUSES,
 } from '@/shared/lib/enums';
-import { calculatePayroll } from '@/features/payroll/calc';
 import { postponeTaskDate, sortTasks } from '@/shared/lib/tasks';
-import { buildTimesheet, buildTimesheetRow } from './timesheet';
+import { buildTimesheet } from './timesheet';
 import { loadDb, resetDb, saveDb } from './db';
 import { generateTemporaryPassword, hashPassword, verifyPassword } from './password';
 
@@ -148,6 +149,7 @@ const assignmentFields = [
   'allocation',
   'startDate',
   'endDate',
+  'overloadReason',
 ] as const satisfies readonly (keyof AssignmentPayload)[];
 
 const absenceFields = [
@@ -240,6 +242,98 @@ function canManageAccounts(role: Role) {
 
 function canManageTasks(user: User | null) {
   return user?.role === 'admin' || user?.role === 'manager';
+}
+
+/**
+ * Подразделение менеджера + подразделения, где он руководитель, + все дочерние.
+ * Так руководитель видит не только свою карточку отдела, но и подчинённую структуру.
+ */
+function managerScopeDepartmentIds(db: Db, managerEmployeeId: string) {
+  const roots = new Set<string>();
+  const own = db.employees.find((employee) => employee.id === managerEmployeeId);
+  if (own) roots.add(own.departmentId);
+  db.departments.forEach((department) => {
+    if (department.headId === managerEmployeeId) roots.add(department.id);
+  });
+
+  const result = new Set<string>();
+  const visit = (id: string) => {
+    if (result.has(id)) return;
+    result.add(id);
+    db.departments
+      .filter((department) => department.parentId === id)
+      .forEach((department) => visit(department.id));
+  };
+  roots.forEach(visit);
+  return result;
+}
+
+function employeeRole(db: Db, employeeId: string): Role {
+  return db.users.find((user) => user.employeeId === employeeId)?.role ?? 'employee';
+}
+
+function canApproveAbsenceFor(db: Db, actor: User, absence: Absence) {
+  if (!can(actor.role, 'absences:approve')) return false;
+  if (actor.role === 'admin') return true;
+  if (actor.employeeId && actor.employeeId === absence.employeeId) return false;
+
+  const requesterRole = employeeRole(db, absence.employeeId);
+  if (!canApproveAbsence(actor.role, requesterRole)) return false;
+
+  if (actor.role === 'manager') {
+    if (!actor.employeeId) return false;
+    const employee = db.employees.find((item) => item.id === absence.employeeId);
+    return Boolean(
+      employee && managerScopeDepartmentIds(db, actor.employeeId).has(employee.departmentId),
+    );
+  }
+
+  return actor.role === 'hr';
+}
+
+function canApproveTimesheetFor(db: Db, actor: User, employeeId: string) {
+  if (actor.role === 'admin') return true;
+  if (actor.employeeId === employeeId) return false;
+
+  const targetRole = employeeRole(db, employeeId);
+  if (!canApproveAbsence(actor.role, targetRole)) return false;
+
+  if (actor.role === 'manager') {
+    if (!actor.employeeId) return false;
+    const employee = db.employees.find((item) => item.id === employeeId);
+    return Boolean(
+      employee && managerScopeDepartmentIds(db, actor.employeeId).has(employee.departmentId),
+    );
+  }
+
+  return actor.role === 'hr';
+}
+
+function assignmentLoadAt(
+  db: Db,
+  employeeId: string,
+  date: string,
+  excludeAssignmentId?: string,
+) {
+  return calculateLoad(db.assignments, db.projects, employeeId, date, excludeAssignmentId);
+}
+
+function validateOverload(
+  actor: User,
+  projectedLoad: number,
+  reason: string | undefined,
+) {
+  if (projectedLoad <= 100) return null;
+  if (actor.role !== 'admin') {
+    return 'Превышение загрузки: итоговая загрузка сотрудника не может быть больше 100%';
+  }
+  if (projectedLoad > ADMIN_LOAD_LIMIT) {
+    return `Администратор может разрешить перегруз только до ${ADMIN_LOAD_LIMIT}%`;
+  }
+  if (!reason?.trim()) {
+    return 'Укажите причину перегруза — это действие доступно только администратору';
+  }
+  return null;
 }
 
 function createsDepartmentCycle(departments: Department[], departmentId: string, parentId: string) {
@@ -465,52 +559,6 @@ function syncAbsenceEvent(db: Db, absence: Absence, author: User | null) {
   });
 }
 
-function recalcPayslips(db: Db, period: string, resetStatus = false) {
-  const monthStart = `${period}-01`;
-  const monthEnd = dayjs(monthStart).endOf('month').format('YYYY-MM-DD');
-  const employees = db.employees.filter(
-    (employee) =>
-      employee.hireDate <= monthEnd &&
-      (!employee.dismissalDate || employee.dismissalDate >= monthStart),
-  );
-
-  let sequence = db.payslips.reduce((max, payslip) => {
-    const numeric = Number(payslip.id.replace(/\D/g, ''));
-    return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
-  }, 0);
-
-  const next: Payslip[] = employees.map((employee) => {
-    const row = buildTimesheetRow(db, employee, period);
-    const existing = db.payslips.find(
-      (payslip) => payslip.period === period && payslip.employeeId === employee.id,
-    );
-    const bonus = existing?.bonus ?? 0;
-    const paidDays = row.workedDays + row.vacationDays + row.tripDays;
-    const totals = calculatePayroll(employee.salary, paidDays, row.normDays, bonus);
-    let id = existing?.id;
-    if (!id) {
-      sequence += 1;
-      id = `ps${String(sequence).padStart(3, '0')}`;
-    }
-    return {
-      id,
-      period,
-      employeeId: employee.id,
-      baseSalary: employee.salary,
-      normDays: row.normDays,
-      paidDays,
-      workedDays: row.workedDays,
-      bonus,
-      ...totals,
-      status: resetStatus ? 'draft' : (existing?.status ?? 'draft'),
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
-    };
-  });
-
-  db.payslips = [...db.payslips.filter((payslip) => payslip.period !== period), ...next];
-  return next;
-}
-
 function birthdayInfo(birthDate: string) {
   const birth = dayjs(birthDate);
   const today = dayjs().startOf('day');
@@ -583,16 +631,12 @@ export const handlers = [
         .filter((employee) => !departmentId || employee.departmentId === departmentId)
         .map((employee) => employee.id),
     );
-    const assignments = db.assignments.filter((assignment) => ids.has(assignment.employeeId));
     const activeProjects = db.projects.filter((project) => project.status === 'active');
-    const allocationByEmployee = new Map<string, number>();
-    assignments.forEach((assignment) => {
-      allocationByEmployee.set(
-        assignment.employeeId,
-        (allocationByEmployee.get(assignment.employeeId) ?? 0) + assignment.allocation,
-      );
-    });
-    const totalAllocation = [...allocationByEmployee.values()].reduce((sum, value) => sum + value, 0);
+    const totalAllocation = employees.reduce(
+      (sum, employee) =>
+        sum + calculateLoad(db.assignments, db.projects, employee.id, today),
+      0,
+    );
     const avgUtilization = employees.length ? Math.round(totalAllocation / employees.length) : 0;
 
     const byDepartmentMap = new Map<string, number>();
@@ -623,7 +667,10 @@ export const handlers = [
         db.assignments
           .filter(
             (assignment) =>
-              assignment.projectId === project.id && ids.has(assignment.employeeId),
+              assignment.projectId === project.id &&
+              ids.has(assignment.employeeId) &&
+              assignment.startDate <= today &&
+              (!assignment.endDate || assignment.endDate >= today),
           )
           .map((assignment) => assignment.employeeId),
       ).size,
@@ -835,9 +882,14 @@ export const handlers = [
     );
     db.assignments = db.assignments.filter((item) => item.employeeId !== employee.id);
     db.projectTasks = db.projectTasks.filter((item) => item.employeeId !== employee.id);
+    const absenceIds = new Set(
+      db.absences.filter((item) => item.employeeId === employee.id).map((item) => item.id),
+    );
     db.absences = db.absences.filter((item) => item.employeeId !== employee.id);
+    db.absenceTaskDecisions = db.absenceTaskDecisions.filter(
+      (item) => !absenceIds.has(item.absenceId),
+    );
     db.events = db.events.filter((item) => item.employeeId !== employee.id);
-    db.payslips = db.payslips.filter((item) => item.employeeId !== employee.id);
     const timesheetPrefix = `${employee.id}|`;
     db.timesheetOverrides = Object.fromEntries(
       Object.entries(db.timesheetOverrides).filter(([key]) => !key.startsWith(timesheetPrefix)),
@@ -1136,6 +1188,9 @@ export const handlers = [
     const body = (await request.json()) as AssignmentPayload;
     const project = db.projects.find((item) => item.id === body.projectId);
     if (!project) return notFound('Проект не найден');
+    if (project.status === 'completed') {
+      return badRequest('Нельзя назначить сотрудника на завершённый проект');
+    }
     if (user.role === 'manager' && project.managerId !== user.employeeId) {
       return forbidden('Можно управлять командой только своих проектов');
     }
@@ -1157,9 +1212,15 @@ export const handlers = [
     ) {
       return badRequest('Сотрудник уже назначен на этот проект');
     }
+    const currentLoad = assignmentLoadAt(db, body.employeeId, body.startDate);
+    const projectedLoad = currentLoad + body.allocation;
+    const overloadProblem = validateOverload(user, projectedLoad, body.overloadReason);
+    if (overloadProblem) return badRequest(overloadProblem);
 
     const assignment: Assignment = {
       ...pickFields(body, assignmentFields),
+      overloadReason:
+        projectedLoad > 100 ? body.overloadReason?.trim() : undefined,
       id: nextId('a', db.assignments),
     };
     db.assignments.push(assignment);
@@ -1169,7 +1230,9 @@ export const handlers = [
       'Создано назначение на проект',
       'assignment',
       assignment.id,
-      `${fullName(employee)} · ${project.name} · ${assignment.allocation}%`,
+      `${fullName(employee)} · ${project.name} · ${assignment.allocation}%${
+        assignment.overloadReason ? ` · перегруз: ${assignment.overloadReason}` : ''
+      }`,
     );
     saveDb(db);
     return HttpResponse.json(assignment, { status: 201 });
@@ -1206,6 +1269,16 @@ export const handlers = [
     if (endDate && endDate < startDate) {
       return badRequest('Дата окончания назначения раньше даты начала');
     }
+    const targetProject = db.projects.find((item) => item.id === projectId);
+    if (!targetProject) return notFound('Проект не найден');
+    if (targetProject.status === 'completed') {
+      return badRequest('Нельзя назначить сотрудника на завершённый проект');
+    }
+    const targetEmployee = db.employees.find((item) => item.id === employeeId);
+    if (!targetEmployee) return notFound('Сотрудник не найден');
+    if (targetEmployee.status === 'dismissed') {
+      return badRequest('Нельзя назначить на проект уволенного сотрудника');
+    }
     if (
       db.assignments.some(
         (item) =>
@@ -1216,7 +1289,16 @@ export const handlers = [
     ) {
       return badRequest('Сотрудник уже назначен на этот проект');
     }
+    const allocation = body.allocation ?? assignment.allocation;
+    const currentLoad = assignmentLoadAt(db, employeeId, startDate, assignment.id);
+    const projectedLoad = currentLoad + allocation;
+    const overloadProblem = validateOverload(user, projectedLoad, body.overloadReason ?? assignment.overloadReason);
+    if (overloadProblem) return badRequest(overloadProblem);
     Object.assign(assignment, pickFields(body, assignmentFields));
+    assignment.overloadReason =
+      projectedLoad > 100
+        ? (body.overloadReason ?? assignment.overloadReason)?.trim()
+        : undefined;
     const employee = db.employees.find((item) => item.id === assignment.employeeId);
     const project = db.projects.find((item) => item.id === assignment.projectId);
     pushAudit(
@@ -1225,7 +1307,9 @@ export const handlers = [
       'Изменено назначение на проект',
       'assignment',
       assignment.id,
-      `${fullName(employee)} · ${project?.name ?? assignment.projectId} · ${assignment.allocation}%`,
+      `${fullName(employee)} · ${project?.name ?? assignment.projectId} · ${assignment.allocation}%${
+        assignment.overloadReason ? ` · перегруз: ${assignment.overloadReason}` : ''
+      }`,
     );
     saveDb(db);
     return HttpResponse.json(assignment);
@@ -1241,6 +1325,15 @@ export const handlers = [
     const project = db.projects.find((item) => item.id === assignment.projectId);
     if (user.role === 'manager' && project?.managerId !== user.employeeId) {
       return forbidden('Можно управлять командой только своих проектов');
+    }
+    const activeTasks = db.projectTasks.filter(
+      (task) =>
+        task.projectId === assignment.projectId &&
+        task.employeeId === assignment.employeeId &&
+        task.status === 'todo',
+    );
+    if (activeTasks.length) {
+      return badRequest('Сначала переназначьте или закройте активные задачи сотрудника в проекте');
     }
     db.assignments = db.assignments.filter((item) => item.id !== assignment.id);
     const employee = db.employees.find((item) => item.id === assignment.employeeId);
@@ -1343,6 +1436,7 @@ export const handlers = [
       originalDueDate: body.dueDate,
       carryCount: 0,
       carryHistory: [],
+      completionHistory: [],
     };
 
     db.projectTasks.push(task);
@@ -1382,7 +1476,7 @@ export const handlers = [
         return forbidden('Можно изменять только свои задачи');
       }
       const allowed = Object.keys(body).every(
-        (key) => key === 'status' || key === 'postpone',
+        (key) => key === 'status' || key === 'postpone' || key === 'completionComment',
       );
       if (!allowed) {
         return forbidden('Сотрудник может только выполнить или перенести задачу');
@@ -1431,9 +1525,42 @@ export const handlers = [
 
     if (body.status && body.status !== task.status) {
       task.status = body.status;
-      task.completedAt = body.status === 'done' ? new Date().toISOString() : null;
+      task.completionHistory = task.completionHistory ?? [];
+      const comment = body.completionComment?.trim() ?? '';
+      const at = new Date().toISOString();
+      if (body.status === 'done') {
+        task.completedAt = at;
+        task.completionComment = comment || undefined;
+        task.completedById = actor.employeeId ?? actor.id;
+        task.completedByName = actor.name;
+      } else {
+        task.completedAt = null;
+        task.completionComment = undefined;
+        task.completedById = null;
+        task.completedByName = null;
+      }
+      task.completionHistory.push({
+        action: body.status === 'done' ? 'done' : 'reopen',
+        comment,
+        at,
+        byId: actor.id,
+        byName: actor.name,
+      });
       auditAction =
         body.status === 'done' ? 'Задача выполнена' : 'Задача возвращена в работу';
+    } else if (body.status === 'done' && body.completionComment !== undefined) {
+      task.completionHistory = task.completionHistory ?? [];
+      const comment = body.completionComment.trim();
+      task.completionComment = comment || undefined;
+      task.completedById = actor.employeeId ?? actor.id;
+      task.completedByName = actor.name;
+      task.completionHistory.push({
+        action: 'done',
+        comment,
+        at: new Date().toISOString(),
+        byId: actor.id,
+        byName: actor.name,
+      });
     }
 
     if (manager) {
@@ -1466,7 +1593,9 @@ export const handlers = [
       task.id,
       auditAction === 'Задача перенесена'
         ? auditDetails
-        : `${task.title} · ${fullName(employee)}`,
+        : `${task.title} · ${fullName(employee)}${
+            task.completionComment ? ` · результат: ${task.completionComment}` : ''
+          }`,
     );
     saveDb(db);
     return HttpResponse.json(task);
@@ -1523,12 +1652,10 @@ export const handlers = [
     }
     const employee = db.employees.find((item) => item.id === params.employeeId);
     if (!employee) return notFound('Сотрудник не найден');
-    if (
-      body.status === 'approved' &&
-      user.role !== 'admin' &&
-      params.employeeId === user.employeeId
-    ) {
-      return forbidden('Собственный табель утверждает только администратор');
+    if (!canApproveTimesheetFor(db, user, String(params.employeeId))) {
+      return forbidden(
+        'Нельзя утверждать табель сотрудника вне своей зоны ответственности или собственный',
+      );
     }
     db.timesheetStatuses[`${params.employeeId}|${body.month}`] = body.status;
     pushAudit(
@@ -1568,6 +1695,12 @@ export const handlers = [
     }
     if (!Number.isFinite(body.hours) || body.hours < 0 || body.hours > 24) {
       return badRequest('Часы должны быть числом от 0 до 24');
+    }
+    const calendarDay = getCalendarDay(date);
+    if (!isWorkingDay(date) && body.code !== 'В' && user.role !== 'admin') {
+      return badRequest(
+        `${formatDate(date)} — нерабочий день${calendarDay.name ? ` (${calendarDay.name})` : ''}. Работу в такой день может отметить только администратор`,
+      );
     }
     const timesheetStatus = db.timesheetStatuses[`${employeeId}|${month}`];
     const wasApproved = timesheetStatus === 'approved';
@@ -1616,6 +1749,63 @@ export const handlers = [
     return HttpResponse.json(items);
   }),
 
+  http.get(`${BASE}/absences/:id/task-handover`, ({ params, request }) => {
+    const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
+    const absence = db.absences.find((item) => item.id === params.id);
+    if (!absence) return notFound('Заявка не найдена');
+    if (!canApproveAbsenceFor(db, user, absence)) {
+      return forbidden('Нельзя просматривать задачи этой заявки');
+    }
+
+    const tasks = db.projectTasks.filter(
+      (task) => task.employeeId === absence.employeeId && task.status === 'todo',
+    );
+
+    const data: AbsenceTaskHandover = {
+      absenceId: absence.id,
+      tasks: tasks.map((task) => {
+        const projectAssignments = db.assignments.filter(
+          (assignment) =>
+            assignment.projectId === task.projectId &&
+            assignment.employeeId !== absence.employeeId &&
+            assignment.startDate <= absence.endDate &&
+            (!assignment.endDate || assignment.endDate >= absence.startDate),
+        );
+        const candidates: TaskHandoverCandidate[] = [];
+        const seen = new Set<string>();
+
+        for (const assignment of projectAssignments) {
+          if (seen.has(assignment.employeeId)) continue;
+          seen.add(assignment.employeeId);
+          const employee = db.employees.find((item) => item.id === assignment.employeeId);
+          if (!employee || employee.status === 'dismissed') continue;
+          const targetAbsence = findAbsenceOverlap(db.absences, {
+            employeeId: employee.id,
+            startDate: absence.startDate,
+            endDate: absence.endDate,
+            statuses: ['approved'],
+          });
+          if (targetAbsence) continue;
+          const load = assignmentLoadAt(db, employee.id, absence.startDate);
+          if (load >= 100) continue;
+          candidates.push({
+            employeeId: employee.id,
+            employeeName: fullName(employee),
+            projectRole: assignment.projectRole,
+            load,
+          });
+        }
+
+        candidates.sort((a, b) => a.load - b.load || a.employeeName.localeCompare(b.employeeName, 'ru'));
+        return { task, candidates };
+      }),
+    };
+
+    return HttpResponse.json(data);
+  }),
+
   http.post(`${BASE}/absences`, async ({ request }) => {
     const db = loadDb();
     const user = authUser(request, db);
@@ -1647,10 +1837,11 @@ export const handlers = [
         `Период пересекается с существующей заявкой ${overlap.startDate} — ${overlap.endDate}`,
       );
     }
+    const breakdown = absenceDayBreakdown(body.type, body.startDate, body.endDate);
     const absence: Absence = {
       ...pickFields(body, absenceFields),
       id: nextId('ab', db.absences),
-      days: businessDaysBetween(body.startDate, body.endDate),
+      ...breakdown,
       status: 'pending',
       createdAt: new Date().toISOString(),
       approvedBy: null,
@@ -1666,27 +1857,21 @@ export const handlers = [
     const user = authUser(request, db);
     if (!user) return unauthorized('Сессия истекла');
     if (!can(user.role, 'absences:approve')) return forbidden('Недостаточно прав');
-    const body = (await request.json()) as { status: Absence['status'] };
+    const body = (await request.json()) as {
+      status: Absence['status'];
+      taskDecisions?: AbsenceTaskDecision[];
+    };
     if (!ABSENCE_STATUSES.includes(body.status)) {
       return badRequest('Некорректный статус заявки');
     }
     const absence = db.absences.find((item) => item.id === params.id);
     if (!absence) return notFound('Заявка не найдена');
-    const requester = db.users.find((item) => item.employeeId === absence.employeeId);
-    if (!canApproveAbsence(user.role, requester?.role)) {
-      return forbidden('Нельзя согласовывать заявки равного или вышестоящего сотрудника');
-    }
-    if (body.status === 'approved' && user.employeeId === absence.employeeId && user.role !== 'admin') {
-      return forbidden('Собственную заявку может согласовать только администратор');
+    if (!canApproveAbsenceFor(db, user, absence)) {
+      return forbidden('Нельзя согласовывать заявку вне своей зоны ответственности');
     }
     if (body.status === 'approved') {
-      if (absence.type === 'sick' || absence.type === 'business_trip') {
-        const activeTasks = db.projectTasks.filter(
-          (task) => task.employeeId === absence.employeeId && task.status !== 'done',
-        );
-        if (activeTasks.length) {
-          return badRequest('Сначала переназначьте активные задачи сотрудника');
-        }
+      if (user.employeeId === absence.employeeId && user.role !== 'admin') {
+        return forbidden('Собственную заявку может согласовать только администратор');
       }
       const overlap = findAbsenceOverlap(db.absences, {
         employeeId: absence.employeeId,
@@ -1698,6 +1883,96 @@ export const handlers = [
       if (overlap) {
         return badRequest(
           `Период пересекается с согласованным отсутствием ${overlap.startDate} — ${overlap.endDate}`,
+        );
+      }
+
+      const activeTasks = db.projectTasks.filter(
+        (task) => task.employeeId === absence.employeeId && task.status === 'todo',
+      );
+      const activeTaskIds = new Set(activeTasks.map((task) => task.id));
+      const decisions = Array.isArray(body.taskDecisions) ? body.taskDecisions : [];
+      const seenTaskIds = new Set<string>();
+
+      for (const decision of decisions) {
+        if (!activeTaskIds.has(decision.taskId)) {
+          return badRequest('Задача не найдена среди активных задач сотрудника');
+        }
+        if (seenTaskIds.has(decision.taskId)) {
+          return badRequest('По одной задаче можно принять только одно решение');
+        }
+        seenTaskIds.add(decision.taskId);
+        if (decision.action !== 'keep' && decision.action !== 'reassign') {
+          return badRequest('Некорректное действие по задаче');
+        }
+        if (decision.action === 'reassign') {
+          if (!decision.employeeId) {
+            return badRequest('Выберите нового исполнителя задачи');
+          }
+          if (decision.employeeId === absence.employeeId) {
+            return badRequest('Нельзя переназначить задачу на самого отсутствующего сотрудника');
+          }
+          const target = db.employees.find((item) => item.id === decision.employeeId);
+          if (!target) return notFound('Новый исполнитель не найден');
+          if (target.status === 'dismissed') {
+            return badRequest('Нельзя назначить задачу уволенному сотруднику');
+          }
+          const task = activeTasks.find((item) => item.id === decision.taskId)!;
+          const assigned = db.assignments.some(
+            (assignment) =>
+              assignment.projectId === task.projectId &&
+              assignment.employeeId === target.id &&
+              assignment.startDate <= absence.endDate &&
+              (!assignment.endDate || assignment.endDate >= absence.startDate),
+          );
+          if (!assigned) {
+            return badRequest('Новый исполнитель не назначен на проект');
+          }
+          const targetAbsence = findAbsenceOverlap(db.absences, {
+            employeeId: target.id,
+            startDate: absence.startDate,
+            endDate: absence.endDate,
+            statuses: ['approved'],
+          });
+          if (targetAbsence) {
+            return badRequest(
+              `У сотрудника согласовано отсутствие ${targetAbsence.startDate} — ${targetAbsence.endDate}`,
+            );
+          }
+          if (assignmentLoadAt(db, target.id, absence.startDate) >= 100) {
+            return badRequest('У сотрудника уже 100% загрузки — выберите другого исполнителя');
+          }
+        }
+      }
+
+      for (const decision of decisions) {
+        const task = activeTasks.find((item) => item.id === decision.taskId)!;
+        if (decision.action === 'reassign') {
+          task.employeeId = decision.employeeId!;
+        }
+        const record: AbsenceTaskDecisionRecord = {
+          id: nextId('atd', db.absenceTaskDecisions),
+          absenceId: absence.id,
+          taskId: task.id,
+          action: decision.action,
+          fromEmployeeId: absence.employeeId,
+          toEmployeeId: decision.action === 'reassign' ? decision.employeeId! : null,
+          comment: decision.comment?.trim() || undefined,
+          byUserId: user.id,
+          byUserName: user.name,
+          at: new Date().toISOString(),
+        };
+        db.absenceTaskDecisions.push(record);
+        pushAudit(
+          db,
+          user,
+          decision.action === 'keep' ? 'Задача оставлена сотруднику' : 'Задача переназначена',
+          'task',
+          task.id,
+          `${task.title}${
+            decision.action === 'reassign'
+              ? ` · ${fullName(db.employees.find((item) => item.id === decision.employeeId))}`
+              : ' · на время отсутствия'
+          }${decision.comment ? ` · ${decision.comment}` : ''}`,
         );
       }
     }
@@ -1736,7 +2011,7 @@ export const handlers = [
         'Согласованную заявку нельзя редактировать. Верните её на согласование или отклоните.',
       );
     }
-    const isApprover = can(user.role, 'absences:approve');
+    const isApprover = canApproveAbsenceFor(db, user, absence);
     const isOwnPending =
       user.employeeId !== null &&
       user.employeeId !== undefined &&
@@ -1764,7 +2039,10 @@ export const handlers = [
       );
     }
     Object.assign(absence, pickFields(body, absenceUpdateFields));
-    absence.days = businessDaysBetween(absence.startDate, absence.endDate);
+    Object.assign(
+      absence,
+      absenceDayBreakdown(absence.type, absence.startDate, absence.endDate),
+    );
     syncEmployeeStatus(db, absence.employeeId);
     syncAbsenceEvent(db, absence, user);
     pushAudit(
@@ -1790,7 +2068,7 @@ export const handlers = [
         'Согласованную заявку нельзя удалить. Сначала отклоните её или верните на согласование.',
       );
     }
-    const isApprover = can(user.role, 'absences:approve');
+    const isApprover = canApproveAbsenceFor(db, user, absence);
     const isOwnPending =
       user.employeeId !== null &&
       user.employeeId !== undefined &&
@@ -1798,6 +2076,9 @@ export const handlers = [
       absence.status === 'pending';
     if (!isApprover && !isOwnPending) return forbidden('Недостаточно прав');
     db.absences = db.absences.filter((item) => item.id !== absence.id);
+    db.absenceTaskDecisions = db.absenceTaskDecisions.filter(
+      (item) => item.absenceId !== absence.id,
+    );
     db.events = db.events.filter((event) => event.absenceId !== absence.id);
     syncEmployeeStatus(db, absence.employeeId);
     pushAudit(
@@ -1955,68 +2236,6 @@ export const handlers = [
     pushAudit(db, user, 'Создано кадровое событие', 'event', event.id, auditDetails);
     saveDb(db);
     return HttpResponse.json(event, { status: 201 });
-  }),
-
-  http.get(`${BASE}/payroll`, ({ request }) => {
-    const db = loadDb();
-    const url = new URL(request.url);
-    const period = str(url, 'period') ?? monthKey();
-    return HttpResponse.json(db.payslips.filter((payslip) => payslip.period === period));
-  }),
-
-  http.post(`${BASE}/payroll/calculate`, async ({ request }) => {
-    const db = loadDb();
-    const user = authUser(request, db);
-    if (!user) return unauthorized('Сессия истекла');
-    if (!can(user.role, 'payroll:write')) return forbidden('Недостаточно прав');
-    const body = (await request.json()) as { period: string };
-    if (!body.period || !/^\d{4}-(0[1-9]|1[0-2])$/.test(body.period)) {
-      return badRequest('Некорректный период расчёта');
-    }
-    const payslips = recalcPayslips(db, body.period, true);
-    pushAudit(db, user, 'Выполнен расчёт зарплаты', 'payroll', body.period, `Сотрудников: ${payslips.length}`);
-    saveDb(db);
-    return HttpResponse.json(payslips);
-  }),
-
-  http.patch(`${BASE}/payroll/:id`, async ({ params, request }) => {
-    const db = loadDb();
-    const user = authUser(request, db);
-    if (!user) return unauthorized('Сессия истекла');
-    if (!can(user.role, 'payroll:write')) return forbidden('Недостаточно прав');
-    const body = (await request.json()) as { bonus?: number; status?: 'draft' | 'approved' };
-    const payslip = db.payslips.find((item) => item.id === params.id);
-    if (!payslip) return notFound('Расчётный лист не найден');
-    if (body.bonus !== undefined) {
-      if (!Number.isFinite(body.bonus) || body.bonus < 0) {
-        return badRequest('Премия должна быть неотрицательным числом');
-      }
-      payslip.bonus = body.bonus;
-    }
-    if (body.status !== undefined) {
-      if (!PAYROLL_STATUSES.includes(body.status)) {
-        return badRequest('Некорректный статус расчётного листа');
-      }
-      payslip.status = body.status;
-    }
-    const totals = calculatePayroll(
-      payslip.baseSalary,
-      payslip.paidDays,
-      payslip.normDays,
-      payslip.bonus,
-    );
-    Object.assign(payslip, totals);
-    const employee = db.employees.find((item) => item.id === payslip.employeeId);
-    pushAudit(
-      db,
-      user,
-      'Изменён расчётный лист',
-      'payroll',
-      payslip.id,
-      `${payslip.period} · ${fullName(employee)} · премия ${payslip.bonus} ₽ · ${payrollStatusMeta[payslip.status].label}`,
-    );
-    saveDb(db);
-    return HttpResponse.json(payslip);
   }),
 
   http.get(`${BASE}/users`, ({ request }) => {

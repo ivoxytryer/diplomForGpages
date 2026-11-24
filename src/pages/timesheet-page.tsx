@@ -13,10 +13,10 @@ import {
   datesOfMonth,
   formatDate,
   fullName,
-  isWeekend,
   monthKey,
   plural,
 } from '@/shared/lib/utils';
+import { getCalendarDay, isRedDay } from '@/shared/lib/calendar';
 import { MonthSwitcher, PageHeader, SearchInput } from '@/shared/ui/page';
 import { Badge, Card, EmptyState, ErrorState, Field, Input, Select, Skeleton } from '@/shared/ui/primitives';
 import { Button } from '@/shared/ui/button';
@@ -156,6 +156,18 @@ export function TimesheetPage() {
               </span>
               {timesheetCodeMeta['—'].label}
             </span>
+            <span className="flex items-center gap-1 text-danger">
+              <span className="inline-flex size-5 items-center justify-center rounded border border-danger/30 text-[10px] font-semibold">
+                В
+              </span>
+              праздник
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-flex size-5 items-center justify-center rounded border border-warning/30 text-[10px] font-semibold text-warning">
+                −1
+              </span>
+              сокращённый день
+            </span>
           </div>
         </div>
       </Card>
@@ -163,13 +175,13 @@ export function TimesheetPage() {
       {isEmployee ? (
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-surface-2/60 px-3 py-2 text-xs text-muted">
           <Info className="size-4 text-primary" />
-          Табель доступен в режиме просмотра. Отметки вносит руководитель или администратор.
+          Табель доступен в режиме просмотра. Отметки вносит HR или администратор.
         </div>
       ) : null}
       {user?.role === 'hr' ? (
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-surface-2/60 px-3 py-2 text-xs text-muted">
           <Info className="size-4 text-primary" />
-          Вы можете просматривать и утверждать табель, но не менять отметки и не утверждать собственный.
+          Вы можете править и утверждать табель, но не собственный. После утверждения правки недоступны.
         </div>
       ) : null}
       {user?.role === 'manager' ? (
@@ -210,18 +222,27 @@ export function TimesheetPage() {
                   <th className="sticky left-0 z-30 min-w-[210px] border-b border-border bg-surface-2 px-3 py-2 text-left">
                     Сотрудник
                   </th>
-                  {dates.map((date) => (
-                    <th
-                      key={date}
-                      className={`border-b border-border px-0.5 py-1 text-center font-semibold ${
-                        isWeekend(date) ? 'bg-surface-2/80 text-muted/70' : ''
-                      }`}
-                      title={formatDate(date)}
-                    >
-                      <span className="block">{dayjs(date).format('D')}</span>
-                      <span className="block text-[9px] font-normal">{dayjs(date).format('dd')}</span>
-                    </th>
-                  ))}
+                  {dates.map((date) => {
+                    const calendarDay = getCalendarDay(date);
+                    const red = isRedDay(date);
+                    const weekend = calendarDay.kind === 'weekend';
+                    return (
+                      <th
+                        key={date}
+                        className={`border-b border-border px-0.5 py-1 text-center font-semibold ${
+                          red
+                            ? 'bg-danger/10 text-danger'
+                            : weekend
+                              ? 'bg-surface-2/80 text-muted/70'
+                              : ''
+                        }`}
+                        title={`${formatDate(date)}${calendarDay.name ? ` · ${calendarDay.name}` : ''}`}
+                      >
+                        <span className="block">{dayjs(date).format('D')}</span>
+                        <span className="block text-[9px] font-normal">{dayjs(date).format('dd')}</span>
+                      </th>
+                    );
+                  })}
                   <th className="border-b border-border px-2 py-2 text-center">Итоги</th>
                   <th className="border-b border-border px-2 py-2 text-left">Статус</th>
                 </tr>
@@ -241,12 +262,17 @@ export function TimesheetPage() {
                       {row.days.map((cell) => {
                         const codeMeta = timesheetCodeMeta[cell.code];
                         const outsidePeriod = cell.code === '—';
-                        const editable = canEdit && !outsidePeriod && !locked;
+                        const calendarDay = getCalendarDay(cell.date);
+                        const red = isRedDay(cell.date);
+                        const weekend = calendarDay.kind === 'weekend';
+                        const nonWorking = calendarDay.kind !== 'workday' && calendarDay.kind !== 'shortened' && calendarDay.kind !== 'working_saturday';
+                        const editable =
+                          canEdit && !outsidePeriod && !locked && (!nonWorking || user?.role === 'admin');
                         return (
                           <td
                             key={cell.date}
                             className={`border-b border-border p-0.5 text-center ${
-                              isWeekend(cell.date) ? 'bg-surface-2/50' : ''
+                              red ? 'bg-danger/5' : weekend ? 'bg-surface-2/50' : ''
                             }`}
                           >
                             <button
@@ -263,10 +289,11 @@ export function TimesheetPage() {
                                 })
                               }
                               className={`inline-flex size-7 items-center justify-center rounded text-[10px] font-semibold transition ${
-                                cellTone[codeMeta.tone]
+                                red ? 'text-danger' : cellTone[codeMeta.tone]
                               } ${editable ? 'hover:ring-2 hover:ring-primary/30' : 'cursor-default'}`}
                               title={`${formatDate(cell.date)} · ${codeMeta.label}${
-                                outsidePeriod ? ' · вне периода работы' : ''
+                                calendarDay.name ? ` · ${calendarDay.name}` : ''
+                              }${outsidePeriod ? ' · вне периода работы' : ''
                               }${locked ? ' · табель утверждён' : ''}${
                                 cell.isOverride ? ' · изменено вручную' : ''
                               }`}
@@ -325,6 +352,11 @@ export function TimesheetPage() {
             <span>
               Норма месяца: <span className="font-medium text-fg">{query.data?.normDays}</span>{' '}
               {plural(query.data?.normDays ?? 0, ['рабочий день', 'рабочих дня', 'рабочих дней'])}
+              {query.data?.normHours ? (
+                <>
+                  {' '}· <span className="font-medium text-fg">{query.data.normHours} ч</span>
+                </>
+              ) : null}
             </span>
             <span>
               Сотрудников: <span className="font-medium text-fg">{rows.length}</span>

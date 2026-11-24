@@ -32,27 +32,12 @@ describe('localStorage migration', () => {
     expect(loaded.timesheetOverrides[key]).toEqual([]);
   });
 
-  it('normalizes stale employee, project and payroll statuses', () => {
+  it('normalizes stale employee and project statuses', () => {
     const db = createSeed();
     db.employees[0].status = 'legacy' as (typeof db.employees)[number]['status'];
     db.employees[0].gender = 'legacy' as (typeof db.employees)[number]['gender'];
     db.employees[0].employmentType = 'legacy' as (typeof db.employees)[number]['employmentType'];
     db.projects[0].status = 'legacy' as (typeof db.projects)[number]['status'];
-    db.payslips.push({
-      id: 'pay-test',
-      period: '2026-11',
-      employeeId: db.employees[0].id,
-      baseSalary: 0,
-      normDays: 0,
-      paidDays: 0,
-      workedDays: 0,
-      bonus: 0,
-      gross: 0,
-      ndfl: 0,
-      net: 0,
-      status: 'legacy' as (typeof db.payslips)[number]['status'],
-      createdAt: new Date().toISOString(),
-    });
     saveDb(db);
 
     const loaded = loadDb();
@@ -61,7 +46,6 @@ describe('localStorage migration', () => {
     expect(loaded.employees[0].gender).toBe('male');
     expect(loaded.employees[0].employmentType).toBe('full');
     expect(loaded.projects[0].status).toBe('planning');
-    expect(loaded.payslips[0].status).toBe('draft');
   });
 
   it('drops absences with unknown types', () => {

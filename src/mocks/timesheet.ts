@@ -7,7 +7,14 @@ import type {
   TimesheetResponse,
   TimesheetRow,
 } from '@/shared/types';
-import { datesOfMonth, isWeekend, normDaysOfMonth } from '@/shared/lib/utils';
+import { datesOfMonth } from '@/shared/lib/utils';
+import {
+  getCalendarDay,
+  getDayHours,
+  isWorkingDay,
+  normDaysOfMonth,
+  normHoursOfMonth,
+} from '@/shared/lib/calendar';
 
 const absenceCode: Record<AbsenceType, TimesheetCode> = {
   vacation: 'ОТ',
@@ -30,8 +37,14 @@ export function buildTimesheetRow(db: Db, employee: Employee, month: string): Ti
   );
 
   const days: TimesheetCell[] = dates.map((date) => {
+    const calendarDay = getCalendarDay(date);
+    const dayMeta = {
+      dayType: calendarDay.kind,
+      holidayName: calendarDay.name,
+    };
+
     if (date < employee.hireDate || (employee.dismissalDate && date > employee.dismissalDate)) {
-      return { date, code: '—', hours: 0, isOverride: false };
+      return { date, code: '—', hours: 0, isOverride: false, ...dayMeta };
     }
 
     const override = overrideMap.get(date);
@@ -41,11 +54,12 @@ export function buildTimesheetRow(db: Db, employee: Employee, month: string): Ti
         code: override.code,
         hours: override.hours,
         isOverride: true,
+        ...dayMeta,
       };
     }
 
-    if (isWeekend(date)) {
-      return { date, code: 'В', hours: 0, isOverride: false };
+    if (!isWorkingDay(date)) {
+      return { date, code: 'В', hours: 0, isOverride: false, ...dayMeta };
     }
 
     const absence = absences.find((item) => item.startDate <= date && item.endDate >= date);
@@ -55,13 +69,20 @@ export function buildTimesheetRow(db: Db, employee: Employee, month: string): Ti
         date,
         code,
         // Командировка — рабочий день, остальные отсутствия не дают часов.
-        hours: code === 'К' ? 8 : 0,
+        hours: code === 'К' ? getDayHours(date) : 0,
         isOverride: false,
         absenceId: absence.id,
+        ...dayMeta,
       };
     }
 
-    return { date, code: 'Я', hours: 8, isOverride: false };
+    return {
+      date,
+      code: 'Я',
+      hours: getDayHours(date),
+      isOverride: false,
+      ...dayMeta,
+    };
   });
 
   const count = (codes: TimesheetCode[]) => days.filter((day) => codes.includes(day.code)).length;
@@ -98,7 +119,7 @@ export function buildTimesheet(
   return {
     month,
     normDays: normDaysOfMonth(month),
+    normHours: normHoursOfMonth(month),
     rows: active.map((employee) => buildTimesheetRow(db, employee, month)),
   };
 }
-

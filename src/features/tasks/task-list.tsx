@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CalendarClock,
@@ -14,7 +15,9 @@ import { useLookups } from '@/shared/hooks/use-lookups';
 import { isTaskOverdue } from '@/shared/lib/tasks';
 import { taskStatusMeta } from '@/shared/lib/meta';
 import { cn, formatDate, fullName, todayISO } from '@/shared/lib/utils';
-import { Badge, EmptyState } from '@/shared/ui/primitives';
+import { Badge, EmptyState, Field, Textarea } from '@/shared/ui/primitives';
+import { Button } from '@/shared/ui/button';
+import { Dialog } from '@/shared/ui/overlay';
 
 interface TaskListProps {
   tasks: ProjectTask[];
@@ -26,7 +29,7 @@ interface TaskListProps {
   emptyTitle?: string;
   emptyDescription?: string;
   busyId?: string | null;
-  onToggle?: (task: ProjectTask, done: boolean) => void;
+  onToggle?: (task: ProjectTask, done: boolean, comment?: string) => void;
   onPostpone?: (task: ProjectTask) => void;
   onEdit?: (task: ProjectTask) => void;
   onDelete?: (task: ProjectTask) => void;
@@ -51,6 +54,8 @@ export function TaskList({
   const role = useAuthStore((state) => state.user?.role);
   const canOpenCards = role !== 'employee';
   const today = todayISO();
+  const [completing, setCompleting] = useState<ProjectTask | null>(null);
+  const [result, setResult] = useState('');
 
   if (tasks.length === 0) {
     return <EmptyState title={emptyTitle} description={emptyDescription} icon={ListTodo} />;
@@ -82,7 +87,14 @@ export function TaskList({
             <button
               type="button"
               disabled={!canAct || busy || !onToggle}
-              onClick={() => onToggle?.(task, task.status !== 'done')}
+              onClick={() => {
+                if (task.status === 'done') {
+                  onToggle?.(task, false);
+                } else {
+                  setCompleting(task);
+                  setResult('');
+                }
+              }}
               title={task.status === 'done' ? 'Вернуть в работу' : 'Отметить выполненной'}
               aria-label={task.status === 'done' ? 'Вернуть в работу' : 'Отметить выполненной'}
               className={cn(
@@ -123,6 +135,12 @@ export function TaskList({
 
               {task.description ? (
                 <p className="mt-0.5 text-xs text-muted">{task.description}</p>
+              ) : null}
+
+              {task.status === 'done' && task.completionComment ? (
+                <p className="mt-1 border-l-2 border-border pl-2 text-xs text-muted">
+                  <span className="font-medium text-fg">Результат:</span> {task.completionComment}
+                </p>
               ) : null}
 
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
@@ -171,7 +189,10 @@ export function TaskList({
                   </span>
                 ) : null}
                 {task.status === 'done' && task.completedAt ? (
-                  <span>Выполнено {formatDate(task.completedAt)}</span>
+                  <span>
+                    Выполнено {formatDate(task.completedAt)}
+                    {task.completedByName ? ` · ${task.completedByName}` : ''}
+                  </span>
                 ) : null}
                 <span className="hidden sm:inline">
                   Поставил: {task.createdByName}
@@ -222,6 +243,41 @@ export function TaskList({
           </div>
         );
       })}
+
+      <Dialog
+        open={Boolean(completing)}
+        onClose={() => setCompleting(null)}
+        title="Закрыть задачу"
+        description={completing?.title}
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCompleting(null)}>
+              Отмена
+            </Button>
+            <Button
+              onClick={() => {
+                if (!completing) return;
+                onToggle?.(completing, true, result.trim() || undefined);
+                setCompleting(null);
+              }}
+            >
+              Выполнено
+            </Button>
+          </>
+        }
+      >
+        <Field
+          label="Результат"
+          hint="Желательно, но не обязательно: что именно сделано по задаче"
+        >
+          <Textarea
+            value={result}
+            onChange={(event) => setResult(event.target.value)}
+            placeholder="Коротко опишите результат — его увидит руководитель"
+          />
+        </Field>
+      </Dialog>
     </div>
   );
 }

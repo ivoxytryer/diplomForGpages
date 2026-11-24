@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import type {
   Absence,
+  AbsenceTaskDecisionRecord,
   Assignment,
   AuditEntry,
   Db,
@@ -14,7 +15,8 @@ import type {
   TimesheetStatus,
   User,
 } from '@/shared/types';
-import { businessDaysBetween, formatDate } from '@/shared/lib/utils';
+import { formatDate } from '@/shared/lib/utils';
+import { absenceDayBreakdown } from '@/shared/lib/absences';
 import { absenceEventTitle, absenceEventType } from '@/shared/lib/meta';
 import { hashPassword } from './password';
 
@@ -368,7 +370,7 @@ const assignmentPlan: [string, string, string, number][] = [
   ['pr8', 'e025', 'Контент-менеджер', 20],
   ['pr1', 'e026', 'Разработчик', 40],
   ['pr2', 'e026', 'Разработчик', 30],
-  ['pr3', 'e026', 'Разработчик', 40],
+  ['pr3', 'e026', 'Разработчик', 30],
   ['pr4', 'e027', 'Инженер', 30],
   ['pr5', 'e028', 'Менеджер', 20],
   ['pr6', 'e029', 'Дизайнер', 20],
@@ -458,6 +460,9 @@ export function seedProjectTasks(): ProjectTask[] {
       originalDueDate: threeDaysAgo,
       createdAt: now.subtract(7, 'day').toISOString(),
       completedAt: now.subtract(2, 'day').toISOString(),
+      completionComment: 'Обновила описание авторизации и примеры запросов, ссылку на документацию отправила в чат проекта.',
+      completedById: 'e004',
+      completedByName: 'Попова Анна',
       ...manager,
     },
     {
@@ -487,7 +492,7 @@ export function seedProjectTasks(): ProjectTask[] {
     },
     {
       projectId: 'pr3',
-      employeeId: 'e003',
+      employeeId: 'e013',
       title: 'Подготовить план релиза',
       dueDate: D(now.add(4, 'day')),
       estimateHours: 4,
@@ -507,6 +512,9 @@ export function seedProjectTasks(): ProjectTask[] {
       originalDueDate: today,
       createdAt: now.subtract(1, 'day').toISOString(),
       completedAt: now.subtract(3, 'hour').toISOString(),
+      completionComment: 'Проверил изменения, замечаний нет — можно мержить.',
+      completedById: 'e003',
+      completedByName: 'Кузнецов Дмитрий',
       ...admin,
     },
     {
@@ -543,6 +551,9 @@ export function seedProjectTasks(): ProjectTask[] {
       originalDueDate: yesterday,
       createdAt: now.subtract(6, 'day').toISOString(),
       completedAt: now.subtract(1, 'day').toISOString(),
+      completionComment: 'API справочника готов, покрыл тестами и передал фронтенду.',
+      completedById: 'e012',
+      completedByName: 'Сотрудник проекта',
       ...manager,
     },
     {
@@ -592,6 +603,9 @@ export function seedProjectTasks(): ProjectTask[] {
       originalDueDate: D(now.subtract(5, 'day')),
       createdAt: now.subtract(10, 'day').toISOString(),
       completedAt: now.subtract(4, 'day').toISOString(),
+      completionComment: 'Архитектура согласована на техсовете, замечания учтены.',
+      completedById: 'e003',
+      completedByName: 'Кузнецов Дмитрий',
       ...admin,
     },
   ];
@@ -607,6 +621,18 @@ export function seedProjectTasks(): ProjectTask[] {
               from: yesterday,
               to: today,
               at: now.subtract(1, 'day').hour(18).minute(10).toISOString(),
+            },
+          ]
+        : [],
+    completionHistory:
+      task.status === 'done' && task.completionComment
+        ? [
+            {
+              action: 'done' as const,
+              comment: task.completionComment,
+              at: task.completedAt ?? task.createdAt,
+              byId: task.completedById ?? task.employeeId,
+              byName: task.completedByName ?? 'Сотрудник',
             },
           ]
         : [],
@@ -636,18 +662,53 @@ function seedAbsences(): Absence[] {
     { employeeId: 'e027', type: 'vacation', start: monthStart.add(23, 'day'), end: monthStart.add(27, 'day'), status: 'pending', reason: 'Отпуск за свой счёт' },
   ];
 
-  return raw.map((item, index) => ({
-    id: `ab${String(index + 1).padStart(3, '0')}`,
-    employeeId: item.employeeId,
-    type: item.type,
-    startDate: D(item.start),
-    endDate: D(item.end),
-    days: businessDaysBetween(D(item.start), D(item.end)),
-    status: item.status,
-    reason: item.reason,
-    createdAt: D(item.start.subtract(10, 'day')),
-    approvedBy: item.status === 'approved' ? 'e002' : null,
-  }));
+  return raw.map((item, index) => {
+    const startDate = D(item.start);
+    const endDate = D(item.end);
+    const breakdown = absenceDayBreakdown(item.type, startDate, endDate);
+    return {
+      id: `ab${String(index + 1).padStart(3, '0')}`,
+      employeeId: item.employeeId,
+      type: item.type,
+      startDate,
+      endDate,
+      ...breakdown,
+      status: item.status,
+      reason: item.reason,
+      createdAt: D(item.start.subtract(10, 'day')),
+      approvedBy: item.status === 'approved' ? 'e002' : null,
+    };
+  });
+}
+
+function seedAbsenceTaskDecisions(): AbsenceTaskDecisionRecord[] {
+  const at = now.subtract(3, 'day').toISOString();
+  return [
+    {
+      id: 'atd001',
+      absenceId: 'ab003',
+      taskId: 't006',
+      action: 'keep',
+      fromEmployeeId: 'e003',
+      toEmployeeId: null,
+      comment: 'Проводит демо удалённо — задача остаётся у сотрудника',
+      byUserId: 'u2',
+      byUserName: 'Мария Смирнова',
+      at,
+    },
+    {
+      id: 'atd002',
+      absenceId: 'ab003',
+      taskId: 't007',
+      action: 'reassign',
+      fromEmployeeId: 'e003',
+      toEmployeeId: 'e013',
+      comment: 'Передано коллеге на время командировки',
+      byUserId: 'u2',
+      byUserName: 'Мария Смирнова',
+      at,
+    },
+  ];
 }
 
 function seedEvents(employees: Employee[], absences: Absence[]): HrEvent[] {
@@ -828,6 +889,7 @@ export function createSeed(): Db {
     assignments: seedAssignments(employees),
     projectTasks: seedProjectTasks(),
     absences,
+    absenceTaskDecisions: seedAbsenceTaskDecisions(),
     events: seedEvents(employees, absences),
     users,
     payslips: [],

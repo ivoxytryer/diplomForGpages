@@ -6,7 +6,6 @@ import type {
   Department,
   Employee,
   HrEvent,
-  Payslip,
   Position,
   Project,
   ProjectTaskStatus,
@@ -14,13 +13,13 @@ import type {
 import { createSeed, seedPositions, seedProjectTasks } from './data';
 import { hashPassword } from './password';
 import { absenceEventType, timesheetCodes } from '@/shared/lib/meta';
+import { absenceDayBreakdown } from '@/shared/lib/absences';
 import {
   ABSENCE_STATUSES,
   ABSENCE_TYPES,
   EMPLOYEE_STATUSES,
   EMPLOYMENT_TYPES,
   GENDERS,
-  PAYROLL_STATUSES,
   PROJECT_STATUSES,
   ROLES,
   TIMESHEET_STATUSES,
@@ -54,8 +53,8 @@ function migrate(db: Db): Db {
   ensureArray('projects', [] as Project[]);
   ensureArray('assignments', [] as Assignment[]);
   ensureArray('absences', [] as Absence[]);
+  ensureArray('absenceTaskDecisions', []);
   ensureArray('events', [] as HrEvent[]);
-  ensureArray('payslips', [] as Payslip[]);
   ensureArray('audit', [] as AuditEntry[]);
 
   // Старые демо-данные хранили только категорию. Дополняем должности
@@ -154,15 +153,18 @@ function migrate(db: Db): Db {
       absence.status = status;
       changed = true;
     }
-    return true;
-  });
-
-  db.payslips.forEach((payslip) => {
-    const status = oneOf(payslip.status, PAYROLL_STATUSES, 'draft');
-    if (status !== payslip.status) {
-      payslip.status = status;
+    const breakdown = absenceDayBreakdown(absence.type, absence.startDate, absence.endDate);
+    if (
+      absence.days !== breakdown.days ||
+      absence.workingDays !== breakdown.workingDays ||
+      absence.calendarDays !== breakdown.calendarDays
+    ) {
+      absence.days = breakdown.days;
+      absence.workingDays = breakdown.workingDays;
+      absence.calendarDays = breakdown.calendarDays;
       changed = true;
     }
+    return true;
   });
 
   Object.entries(db.timesheetStatuses).forEach(([key, status]) => {
@@ -192,6 +194,7 @@ function migrate(db: Db): Db {
   } else {
     db.projectTasks = db.projectTasks.map((task) => {
       const carryHistory = Array.isArray(task.carryHistory) ? task.carryHistory : [];
+      const completionHistory = Array.isArray(task.completionHistory) ? task.completionHistory : [];
       const originalDueDate = task.originalDueDate ?? task.dueDate;
       const carryCount = typeof task.carryCount === 'number' ? task.carryCount : carryHistory.length;
       const rawStatus = String(task.status);
@@ -199,13 +202,21 @@ function migrate(db: Db): Db {
         rawStatus === 'done' || rawStatus === 'completed' ? 'done' : 'todo';
       if (
         carryHistory !== task.carryHistory ||
+        completionHistory !== task.completionHistory ||
         originalDueDate !== task.originalDueDate ||
         carryCount !== task.carryCount ||
         status !== task.status
       ) {
         changed = true;
       }
-      return { ...task, carryHistory, originalDueDate, carryCount, status };
+      return {
+        ...task,
+        carryHistory,
+        completionHistory,
+        originalDueDate,
+        carryCount,
+        status,
+      };
     });
   }
 

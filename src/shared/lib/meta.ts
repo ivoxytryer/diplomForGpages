@@ -160,7 +160,7 @@ export const timesheetCodeMeta: Record<TimesheetCode, TimesheetCodeEntry> =
       К: { label: 'Командировка', short: 'К', tone: 'purple', hours: 8, paid: true },
       П: { label: 'Прогул', short: 'П', tone: 'warning', hours: 0, paid: false },
       Н: { label: 'Без сохранения', short: 'Н', tone: 'neutral', hours: 0, paid: false },
-      В: { label: 'Выходной', short: 'В', tone: 'neutral', hours: 0, paid: false },
+      В: { label: 'Выходной / праздник', short: 'В', tone: 'neutral', hours: 0, paid: false },
       '—': { label: 'Вне периода работы', short: '—', tone: 'neutral', hours: 0, paid: false },
     },
     (key) => ({
@@ -173,15 +173,6 @@ export const timesheetCodeMeta: Record<TimesheetCode, TimesheetCodeEntry> =
   );
 
 export const timesheetCodes: TimesheetCode[] = ['Я', 'ОТ', 'Б', 'К', 'П', 'Н', 'В'];
-
-export const payrollStatusMeta: Record<'draft' | 'approved', MetaEntry> =
-  withFallback<MetaEntry>(
-    {
-      draft: { label: 'Черновик', tone: 'neutral' },
-      approved: { label: 'Утверждён', tone: 'success' },
-    },
-    unknownMeta,
-  );
 
 export const eventTypeMeta: Record<HrEventType, MetaEntry> = withFallback<MetaEntry>(
   {

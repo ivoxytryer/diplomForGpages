@@ -48,9 +48,6 @@ const WorkloadPage = lazy(() =>
 const EventsPage = lazy(() =>
   import('@/pages/events-page').then((module) => ({ default: module.EventsPage })),
 );
-const PayrollPage = lazy(() =>
-  import('@/pages/payroll-page').then((module) => ({ default: module.PayrollPage })),
-);
 const ReportsPage = lazy(() =>
   import('@/pages/reports-page').then((module) => ({ default: module.ReportsPage })),
 );
@@ -178,14 +175,6 @@ const routes = [
             element: (
               <RequireRole roles={staff}>
                 <EventsPage />
-              </RequireRole>
-            ),
-          },
-          {
-            path: 'payroll',
-            element: (
-              <RequireRole roles={['admin', 'hr', 'employee']}>
-                <PayrollPage />
               </RequireRole>
             ),
           },
