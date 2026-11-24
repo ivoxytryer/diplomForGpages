@@ -149,6 +149,23 @@ describe('права на запись', () => {
     expect((await call('DELETE', '/projects/pr1')).status).toBe(401);
   });
 
+  it('требует сессию для чтения', async () => {
+    for (const url of [
+      '/employees',
+      '/employees/e004',
+      '/absences',
+      '/timesheet',
+      '/events',
+      '/projects',
+      '/assignments',
+      '/dashboard',
+      '/notifications',
+      '/vacations/balance',
+    ]) {
+      expect((await call('GET', url)).status, url).toBe(401);
+    }
+  });
+
   it('сотрудник не может менять карточки, табель и заявки других', async () => {
     const employee = await login('employee@hr.local');
     const today = todayISO();
@@ -298,6 +315,43 @@ describe('права на запись', () => {
     expect(restored.status).toBe(200);
   });
 
+  it('ограничивает чтение сотрудников и табеля по роли', async () => {
+    const employee = await login('employee@hr.local');
+    const employeeList = (await call('GET', '/employees?pageSize=500', undefined, employee.token))
+      .data as { items: Array<{ id: string }> };
+    expect(employeeList.items.map((item) => item.id)).toContain('e004');
+    expect(employeeList.items.map((item) => item.id)).not.toContain('e008');
+    expect((await call('GET', '/employees/e004', undefined, employee.token)).status).toBe(200);
+    expect((await call('GET', '/employees/e008', undefined, employee.token)).status).toBe(403);
+    expect(
+      (await call('GET', `/timesheet?month=${monthKey()}&employeeId=e008`, undefined, employee.token))
+        .status,
+    ).toBe(403);
+
+    const manager = await login('manager@hr.local');
+    expect((await call('GET', '/employees/e009', undefined, manager.token)).status).toBe(200);
+    expect((await call('GET', '/employees/e008', undefined, manager.token)).status).toBe(403);
+  });
+
+  it('не меняет организационные поля через PATCH карточки', async () => {
+    const admin = await login('admin@hr.local');
+
+    expect(
+      (await call('PATCH', '/employees/e004', { departmentId: 'd2' }, admin.token)).status,
+    ).toBe(400);
+    expect(
+      (await call('PATCH', '/employees/e004', { salary: 123456 }, admin.token)).status,
+    ).toBe(400);
+    const personal = await call(
+      'PATCH',
+      '/employees/e004',
+      { firstName: 'Анна', phone: '+7 900 000-00-04' },
+      admin.token,
+    );
+    expect(personal.status).toBe(200);
+    expect(asItem(personal.data).firstName).toBe('Анна');
+  });
+
   it('HR не создаёт задачи и не управляет пользователями', async () => {
     const hr = await login('hr@hr.local');
     const today = todayISO();
@@ -326,19 +380,19 @@ describe('отсутствия и статус сотрудника', () => {
 
     const approved = await call('PATCH', `/absences/${absence.id}/status`, { status: 'approved' }, admin.token);
     expect(approved.status).toBe(200);
-    let employee = asItem((await call('GET', '/employees/e004')).data);
+    let employee = asItem((await call('GET', '/employees/e004', undefined, admin.token)).data);
     expect(employee.status).toBe('vacation');
 
     const blockedDelete = await call('DELETE', `/absences/${absence.id}`, undefined, admin.token);
     expect(blockedDelete.status).toBe(400);
 
     await call('PATCH', `/absences/${absence.id}/status`, { status: 'rejected' }, admin.token);
-    employee = asItem((await call('GET', '/employees/e004')).data);
+    employee = asItem((await call('GET', '/employees/e004', undefined, admin.token)).data);
     expect(employee.status).toBe('active');
 
     const removed = await call('DELETE', `/absences/${absence.id}`, undefined, admin.token);
     expect(removed.status).toBe(200);
-    employee = asItem((await call('GET', '/employees/e004')).data);
+    employee = asItem((await call('GET', '/employees/e004', undefined, admin.token)).data);
     expect(employee.status).toBe('active');
   });
 
@@ -373,7 +427,7 @@ describe('отсутствия и статус сотрудника', () => {
     ).toBe(200);
 
     const timesheet = asItem(
-      (await call('GET', `/timesheet?month=${month}&employeeId=e004`)).data,
+      (await call('GET', `/timesheet?month=${month}&employeeId=e004`, undefined, admin.token)).data,
     ) as { rows: Array<{ days: Array<{ date: string; code?: string; isOverride?: boolean }> }> };
     const row = timesheet.rows[0];
     const day = row.days.find((item) => item.date === value);
@@ -395,7 +449,7 @@ describe('отсутствия и статус сотрудника', () => {
     const absence = asItem(created.data);
     await call('PATCH', `/absences/${absence.id}/status`, { status: 'approved' }, admin.token);
 
-    const employee = asItem((await call('GET', '/employees/e005')).data);
+    const employee = asItem((await call('GET', '/employees/e005', undefined, admin.token)).data);
     expect(employee.status).toBe('active');
   });
 
@@ -429,6 +483,47 @@ describe('отсутствия и статус сотрудника', () => {
     ).toBe(403);
   });
 
+  it('больничный может только подтвердить HR или администратор', async () => {
+    const admin = await login('admin@hr.local');
+    const hr = await login('hr@hr.local');
+    const manager = await login('manager@hr.local');
+    const date = dayjs().add(4, 'month').startOf('month').add(9, 'day').format('YYYY-MM-DD');
+    const created = await call(
+      'POST',
+      '/absences',
+      { employeeId: 'e004', type: 'sick', startDate: date, endDate: date },
+      admin.token,
+    );
+    expect(created.status).toBe(201);
+    const absence = asItem(created.data);
+
+    expect(
+      (await call('PATCH', `/absences/${absence.id}/status`, { status: 'approved' }, manager.token))
+        .status,
+    ).toBe(403);
+
+    const confirmed = await call(
+      'PATCH',
+      `/absences/${absence.id}/status`,
+      { status: 'approved' },
+      hr.token,
+    );
+    expect(confirmed.status).toBe(200);
+    expect(asItem(confirmed.data).confirmedAt).toBeTruthy();
+    expect(asItem(confirmed.data).status).toBe('approved');
+
+    expect(
+      (
+        await call(
+          'PATCH',
+          `/absences/${absence.id}/status`,
+          { status: 'rejected' },
+          admin.token,
+        )
+      ).status,
+    ).toBe(400);
+  });
+
   it('запрещает пересекающиеся заявки', async () => {
     const admin = await login('admin@hr.local');
     const today = todayISO();
@@ -450,10 +545,82 @@ describe('отсутствия и статус сотрудника', () => {
   });
 });
 
+describe('уведомления и остатки отпусков', () => {
+  it('отдаёт уведомления пользователя и отмечает прочитанными', async () => {
+    const hr = await login('hr@hr.local');
+    const list = asArray((await call('GET', '/notifications', undefined, hr.token)).data);
+    expect(list.length).toBeGreaterThan(0);
+    const first = list[0];
+    expect(
+      (await call('PATCH', `/notifications/${first.id}/read`, {}, hr.token)).status,
+    ).toBe(200);
+    expect(
+      (await call('PATCH', '/notifications/read-all', {}, hr.token)).status,
+    ).toBe(200);
+    const unread = asArray(
+      (await call('GET', '/notifications?unread=true', undefined, hr.token)).data,
+    );
+    expect(unread).toHaveLength(0);
+  });
+
+  it('считает остаток отпуска и не даёт превысить его', async () => {
+    const employee = await login('employee@hr.local');
+    const year = Number(todayISO().slice(0, 4)) + 1;
+    const balances = asArray(
+      (
+        await call(
+          'GET',
+          `/vacations/balance?year=${year}&employeeId=e004`,
+          undefined,
+          employee.token,
+        )
+      ).data,
+    );
+    expect(balances).toHaveLength(1);
+    const balance = balances[0] as { remaining: number };
+    expect(balance.remaining).toBe(28);
+
+    const tooLong = await call(
+      'POST',
+      '/absences',
+      {
+        employeeId: 'e004',
+        type: 'vacation',
+        startDate: `${year}-01-01`,
+        endDate: `${year}-03-31`,
+      },
+      employee.token,
+    );
+    expect(tooLong.status).toBe(400);
+
+    const hr = await login('hr@hr.local');
+    expect(
+      (
+        await call(
+          'PATCH',
+          '/vacations/balance/e004',
+          { year, entitlement: 30, carryover: 2 },
+          hr.token,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await call(
+          'PATCH',
+          '/vacations/balance/e004',
+          { year, entitlement: 40 },
+          employee.token,
+        )
+      ).status,
+    ).toBe(403);
+  });
+});
+
 describe('кадровые события', () => {
   it('повторный приём сбрасывает дату увольнения', async () => {
     const admin = await login('admin@hr.local');
-    const dismissed = asItem((await call('GET', '/employees/e017')).data);
+    const dismissed = asItem((await call('GET', '/employees/e017', undefined, admin.token)).data);
     expect(dismissed.status).toBe('dismissed');
 
     const event = await call(
@@ -464,7 +631,7 @@ describe('кадровые события', () => {
     );
     expect(event.status).toBe(201);
 
-    const employee = asItem((await call('GET', '/employees/e017')).data);
+    const employee = asItem((await call('GET', '/employees/e017', undefined, admin.token)).data);
     expect(employee.status).toBe('active');
     expect(employee.dismissalDate).toBeNull();
   });
@@ -563,7 +730,7 @@ describe('задачи', () => {
     const task = tasks.find((item) => item.status === 'todo');
     if (!task) throw new Error('Активная задача не найдена');
     const assignments = asArray(
-      (await call('GET', `/assignments?projectId=${task.projectId}`)).data,
+      (await call('GET', `/assignments?projectId=${task.projectId}`, undefined, admin.token)).data,
     );
     const target = assignments.find(
       (assignment) => assignment.employeeId !== task.employeeId,
@@ -670,6 +837,17 @@ describe('справочники и проекты', () => {
       admin.token,
     );
     expect(invalid.status).toBe(400);
+
+    const hr = await login('hr@hr.local');
+    expect(
+      (await call('PATCH', '/positions/p2', { salaryMin: 100000 }, hr.token)).status,
+    ).toBe(403);
+    expect(
+      (await call('PATCH', '/positions/p2', { name: 'HR-специалист' }, hr.token)).status,
+    ).toBe(200);
+    expect(
+      (await call('PATCH', '/positions/p2', { salaryMin: 100000 }, admin.token)).status,
+    ).toBe(200);
   });
 
   it('запрещает перегруз всем, кроме администратора с причиной', async () => {
@@ -726,7 +904,7 @@ describe('лента событий и отсутствия', () => {
     const created = await call(
       'POST',
       '/absences',
-      { employeeId: 'e004', type: 'sick', startDate: today, endDate: end },
+      { employeeId: 'e004', type: 'vacation', startDate: today, endDate: end },
       admin.token,
     );
     const absence = asItem(created.data);
@@ -734,14 +912,13 @@ describe('лента событий и отсутствия', () => {
     let events = asArray((await call('GET', '/events?employeeId=e004', undefined, admin.token)).data);
     expect(events.some((event) => event.absenceId === absence.id)).toBe(false);
 
-    await reassignTasks('e004', admin.token);
     await call('PATCH', `/absences/${absence.id}/status`, { status: 'approved' }, admin.token);
     events = asArray((await call('GET', '/events?employeeId=e004', undefined, admin.token)).data);
-    const sickEvent = events.find((event) => event.absenceId === absence.id);
-    expect(sickEvent).toBeTruthy();
-    expect(sickEvent?.type).toBe('sick_leave');
-    expect(sickEvent?.date).toBe(today);
-    expect(String(sickEvent?.title)).toContain('больничный');
+    const vacationEvent = events.find((event) => event.absenceId === absence.id);
+    expect(vacationEvent).toBeTruthy();
+    expect(vacationEvent?.type).toBe('vacation');
+    expect(vacationEvent?.date).toBe(today);
+    expect(String(vacationEvent?.title)).toContain('отпуск');
 
     // Повторное согласование не создаёт дубликат.
     await call('PATCH', `/absences/${absence.id}/status`, { status: 'approved' }, admin.token);
@@ -1044,15 +1221,40 @@ describe('уточнённые права HR', () => {
     const admin = await login('admin@hr.local');
 
     expect((await call('DELETE', '/employees/e004', undefined, hr.token)).status).toBe(403);
-    expect((await call('PATCH', '/employees/e004', { status: 'dismissed' }, hr.token)).status).toBe(403);
+    expect(
+      (
+        await call(
+          'POST',
+          '/events',
+          { employeeId: 'e004', type: 'dismissal', date: todayISO(), title: 'Увольнение' },
+          hr.token,
+        )
+      ).status,
+    ).toBe(403);
     expect((await call('POST', '/employees', { status: 'dismissed' }, hr.token)).status).toBe(403);
 
     await prepareDismissal('e004', 'e012', admin.token);
-    const dismissed = await call('PATCH', '/employees/e004', { status: 'dismissed' }, admin.token);
-    expect(dismissed.status).toBe(200);
-    expect(asItem(dismissed.data).status).toBe('dismissed');
+    const dismissed = await call(
+      'POST',
+      '/events',
+      { employeeId: 'e004', type: 'dismissal', date: todayISO(), title: 'Увольнение' },
+      admin.token,
+    );
+    expect(dismissed.status).toBe(201);
+    expect(asItem((await call('GET', '/employees/e004', undefined, admin.token)).data).status).toBe(
+      'dismissed',
+    );
 
-    expect((await call('PATCH', '/employees/e004', { status: 'active' }, hr.token)).status).toBe(403);
+    expect(
+      (
+        await call(
+          'POST',
+          '/events',
+          { employeeId: 'e004', type: 'hire', date: todayISO(), title: 'Восстановление' },
+          hr.token,
+        )
+      ).status,
+    ).toBe(403);
     expect((await call('PATCH', '/employees/e004', { firstName: 'Анна' }, hr.token)).status).toBe(200);
     expect((await call('DELETE', '/employees/e004', undefined, admin.token)).status).toBe(200);
   });
@@ -1060,14 +1262,15 @@ describe('уточнённые права HR', () => {
   it('не увольняет, пока задачи и проекты не переданы', async () => {
     const admin = await login('admin@hr.local');
 
-    expect((await call('PATCH', '/employees/e003', { status: 'dismissed' }, admin.token)).status).toBe(400);
+    const dismissal = { employeeId: 'e003', type: 'dismissal', date: todayISO(), title: 'Увольнение' };
+    expect((await call('POST', '/events', dismissal, admin.token)).status).toBe(400);
 
     await reassignTasks('e003', admin.token);
-    expect((await call('PATCH', '/employees/e003', { status: 'dismissed' }, admin.token)).status).toBe(400);
+    expect((await call('POST', '/events', dismissal, admin.token)).status).toBe(400);
 
     await reassignProjects('e003', 'e012', admin.token);
-    const dismissed = await call('PATCH', '/employees/e003', { status: 'dismissed' }, admin.token);
-    expect(dismissed.status).toBe(200);
+    const dismissed = await call('POST', '/events', dismissal, admin.token);
+    expect(dismissed.status).toBe(201);
     const after = asArray((await call('GET', '/projects', undefined, admin.token)).data);
     expect(after.some((project) => project.managerId === 'e003')).toBe(false);
   });
@@ -1122,15 +1325,13 @@ describe('уточнённые права HR', () => {
     const hr = await login('hr@hr.local');
     const admin = await login('admin@hr.local');
 
-    expect((await call('PATCH', '/employees/e004', { salary: 999999 }, hr.token)).status).toBe(403);
-    const updated = await call('PATCH', '/employees/e004', { salary: 200000 }, admin.token);
-    expect(updated.status).toBe(200);
-    expect(asItem(updated.data).salary).toBe(200000);
+    expect((await call('PATCH', '/employees/e004', { salary: 999999 }, hr.token)).status).toBe(400);
+    expect((await call('PATCH', '/employees/e004', { salary: 200000 }, admin.token)).status).toBe(400);
 
     const hrCreated = await call(
       'POST',
       '/employees',
-      { status: 'active', salary: 999999, departmentId: 'd2', positionId: 'p2' },
+      { status: 'active', salary: 0, departmentId: 'd2', positionId: 'p2', email: 'new.hr.card@company.ru' },
       hr.token,
     );
     expect(hrCreated.status).toBe(201);
@@ -1145,6 +1346,9 @@ describe('уточнённые права HR', () => {
     };
     expect((await call('POST', '/events', salaryEvent, hr.token)).status).toBe(403);
     expect((await call('POST', '/events', salaryEvent, admin.token)).status).toBe(201);
+    expect(
+      asItem((await call('GET', '/employees/e004', undefined, admin.token)).data).salary,
+    ).toBe(210000);
   });
 
   it('HR создаёт только свою заявку на отсутствие', async () => {
@@ -1191,7 +1395,7 @@ describe('уточнённые права HR', () => {
   it('архивирует сотрудника: закрывает назначения, отклоняет заявки, блокирует вход', async () => {
     const admin = await login('admin@hr.local');
     const beforeAssignments = asArray(
-      (await call('GET', '/assignments?employeeId=e004')).data,
+      (await call('GET', '/assignments?employeeId=e004', undefined, admin.token)).data,
     );
     const pending = await call(
       'POST',
@@ -1203,27 +1407,34 @@ describe('уточнённые права HR', () => {
     const pendingId = asItem(pending.data).id as string;
 
     await prepareDismissal('e004', 'e012', admin.token);
-    const dismissed = await call('PATCH', '/employees/e004', { status: 'dismissed' }, admin.token);
-    expect(dismissed.status).toBe(200);
-    expect(asItem(dismissed.data).status).toBe('dismissed');
+    const dismissed = await call(
+      'POST',
+      '/events',
+      { employeeId: 'e004', type: 'dismissal', date: todayISO(), title: 'Увольнение' },
+      admin.token,
+    );
+    expect(dismissed.status).toBe(201);
+    expect(
+      asItem((await call('GET', '/employees/e004', undefined, admin.token)).data).status,
+    ).toBe('dismissed');
 
     const history = asItem(
-      (await call('GET', `/timesheet?month=${monthKey()}&employeeId=e004`)).data,
+      (await call('GET', `/timesheet?month=${monthKey()}&employeeId=e004`, undefined, admin.token)).data,
     );
     expect(asArray(history.rows).length).toBe(1);
-    const bulkTimesheet = asItem((await call('GET', `/timesheet?month=${monthKey()}`)).data);
+    const bulkTimesheet = asItem((await call('GET', `/timesheet?month=${monthKey()}`, undefined, admin.token)).data);
     expect(
       asArray(bulkTimesheet.rows).some((row) => row.employeeId === 'e004'),
     ).toBe(false);
 
     const afterAssignments = asArray(
-      (await call('GET', '/assignments?employeeId=e004')).data,
+      (await call('GET', '/assignments?employeeId=e004', undefined, admin.token)).data,
     );
     if (beforeAssignments.length > 0) {
       expect(afterAssignments.every((assignment) => Boolean(assignment.endDate))).toBe(true);
     }
 
-    const absences = asArray((await call('GET', '/absences?employeeId=e004')).data);
+    const absences = asArray((await call('GET', '/absences?employeeId=e004', undefined, admin.token)).data);
     expect(asItem(absences.find((absence) => absence.id === pendingId)).status).toBe('rejected');
 
     const tasks = asArray(
@@ -1237,8 +1448,15 @@ describe('уточнённые права HR', () => {
     ).toBe(403);
 
     expect(
-      (await call('PATCH', '/employees/e004', { status: 'active' }, admin.token)).status,
-    ).toBe(200);
+      (
+        await call(
+          'POST',
+          '/events',
+          { employeeId: 'e004', type: 'hire', date: todayISO(), title: 'Восстановление' },
+          admin.token,
+        )
+      ).status,
+    ).toBe(201);
     expect(
       (await call('POST', '/auth/login', { email: 'employee@hr.local', password: 'demo1234' }))
         .status,

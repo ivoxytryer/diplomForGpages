@@ -21,6 +21,7 @@ import type {
   HrEvent,
   HrEventPayload,
   LoginPayload,
+  Notification,
   Paginated,
   Position,
   PositionPayload,
@@ -34,6 +35,7 @@ import type {
   TimesheetResponse,
   TimesheetStatus,
   User,
+  VacationBalanceView,
 } from '@/shared/types';
 import { ROLES } from '@/shared/lib/enums';
 
@@ -104,7 +106,6 @@ function normalizeDashboard(data: unknown): DashboardData {
     dynamics: array(value.dynamics),
     teamByProject: array(value.teamByProject),
     birthdays: array(value.birthdays),
-    probationEnding: array(value.probationEnding),
     recentEvents: array(value.recentEvents),
   };
 }
@@ -238,6 +239,22 @@ export const api = {
       post<CreateUserResponse>('/users', payload),
     update: (id: string, payload: Partial<Pick<User, 'role' | 'isActive'>>) =>
       patch<User>(`/users/${id}`, payload),
+  },
+
+  notifications: {
+    list: (params: { unread?: boolean } = {}) =>
+      getList<Notification>('/notifications', params),
+    markRead: (id: string) => patch<Notification>(`/notifications/${id}/read`),
+    markAllRead: () => patch<{ ok: true }>('/notifications/read-all'),
+  },
+
+  vacations: {
+    balances: (params: { year?: number; employeeId?: string } = {}) =>
+      getList<VacationBalanceView>('/vacations/balance', params),
+    updateBalance: (
+      employeeId: string,
+      payload: { year: number; entitlement: number; carryover: number },
+    ) => patch<VacationBalanceView>(`/vacations/balance/${employeeId}`, payload),
   },
 
   audit: {

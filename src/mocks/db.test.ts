@@ -59,6 +59,17 @@ describe('localStorage migration', () => {
     expect(loaded.absences).toHaveLength(before - 1);
   });
 
+  it('автоматически завершает истёкший испытательный срок', () => {
+    const db = createSeed();
+    db.employees[0].status = 'probation';
+    db.employees[0].hireDate = '2020-01-01';
+    saveDb(db);
+
+    const loaded = loadDb();
+
+    expect(loaded.employees[0].status).toBe('active');
+  });
+
   it('keeps an intentionally empty employee list instead of reseeding', () => {
     const db = createSeed();
     db.employees = [];

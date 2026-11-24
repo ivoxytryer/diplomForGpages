@@ -15,6 +15,12 @@
 Авторизация — заголовок `Authorization: Bearer <token>` для всех эндпоинтов, кроме `POST /auth/login`.
 При `401` фронтенд автоматически разлогинивает пользователя (кроме запроса логина).
 
+**Чтение также требует авторизации.** Сервер применяет scope: `employee` видит только
+себя, `manager` — своё подразделение с дочерними и команды своих проектов, `hr` — всех
+сотрудников, `admin` — всё. Попытка прочитать чужую карточку, табель, отсутствия или
+события возвращает `403`. Поля `oldSalary`/`newSalary` в событиях доступны только
+`admin` и `hr`.
+
 ---
 
 ## Содержание
@@ -207,8 +213,12 @@
 
 ### `PATCH /employees/{id}`
 
-Частичное обновление: любое подмножество полей `EmployeePayload`.
-**Ответ `200`** — обновлённый `Employee`. **Ошибка:** `404`.
+Частичное обновление **личных данных**: `lastName`, `firstName`, `middleName`,
+`birthDate`, `gender`, `email`, `phone`, `employmentType`, `education`.
+
+Подразделение, должность, руководитель, оклад, дата приёма и статус меняются только
+кадровыми событиями (`POST /events`) — прямое изменение через `PATCH` возвращает `400`.
+Email должен быть уникален. **Ответ `200`** — обновлённый `Employee`. **Ошибка:** `404`.
 
 ### `DELETE /employees/{id}`
 
@@ -284,6 +294,11 @@
 ### `GET /positions` → `Position[]`
 ### `POST /positions` → `201`, тело `PositionPayload` (`name`, `departmentId`, `family`, `grade`, `salaryMin`, `salaryMax`)
 ### `PATCH /positions/{id}` → `200`
+
+Вилку `salaryMin`/`salaryMax` может менять только `admin`; HR редактирует название,
+подразделение, ветку и грейд. Занятую должность нельзя перенести в другое подразделение
+без перевода сотрудников.
+
 ### `DELETE /positions/{id}` → `{ "ok": true }`; при занятой должности `400`
 
 ---
@@ -599,7 +614,9 @@
   "status": "pending",
   "reason": "Ежегодный отпуск",
   "createdAt": "2025-06-01T09:00:00.000Z",
-  "approvedBy": null
+  "approvedBy": null,
+  "confirmedAt": null,
+  "confirmedBy": null
 }
 ```
 
@@ -681,6 +698,11 @@
 сервер проверяет, что новый исполнитель — участник проекта, не уволен, не имеет
 согласованного отсутствия и его загрузка меньше 100%. История решений пишется
 в `absenceTaskDecisions` и аудит.
+
+Для типа `sick` доступно только подтверждение: `status = "approved"` может отправить
+только `hr` или `admin` (не руководитель). Повторное подтверждение допустимо, отклонение
+и возврат в `pending` для больничного возвращают `400`. В ответе появляются
+`confirmedAt` и `confirmedBy`.
 
 Побочные эффекты при согласовании/отклонении:
 - `approved` — `approvedBy` = текущий сотрудник, статус сотрудника синхронизируется
@@ -811,7 +833,6 @@
   "dynamics": [{ "month": "2025-01", "hired": 2, "dismissed": 1 }],
   "teamByProject": [{ "name": "Внедрение CRM", "count": 8 }],
   "birthdays": [{ "employeeId": "e004", "date": "2025-06-12", "daysLeft": 5 }],
-  "probationEnding": [{ "employeeId": "e009", "date": "2025-06-20", "daysLeft": 13 }],
   "recentEvents": [ /* HrEvent[] */ ]
 }
 ```
@@ -821,7 +842,7 @@
 - `byDepartment` — распределение численности.
 - `dynamics` — последние 6 месяцев приёма/увольнений.
 - `teamByProject` — top-6 активных проектов по числу уникальных участников.
-- `birthdays` / `probationEnding` — ближайшие 30 дней.
+- `birthdays` — ближайшие 30 дней.
 
 ---
 
@@ -956,6 +977,38 @@
 `task`, `department`, `position`, `event`, `timesheet`, `auth`).
 
 ---
+
+## Уведомления
+
+### `GET /notifications?unread=true`
+
+Только уведомления текущего пользователя, новые первыми. Объект `Notification`:
+`id`, `userId`, `type`, `title`, `body`, `link`, `createdAt`, `readAt`.
+
+Типы: `absence_request`, `absence_decision`, `task_assigned`, `task_completed`,
+`project_transfer`, `account`.
+
+### `PATCH /notifications/{id}/read` → `Notification`
+### `PATCH /notifications/read-all` → `{ "ok": true }`
+
+## Остатки отпусков
+
+### `GET /vacations/balance?year=2026&employeeId=e004`
+
+Возвращает `VacationBalanceView[]`: `employeeId`, `year`, `entitlement`, `carryover`,
+`used`, `planned`, `remaining`. Отпуск — 28 календарных дней по умолчанию, перенос
+указывается вручную. Праздничные дни в отпуск не включаются.
+
+### `PATCH /vacations/balance/{employeeId}`
+
+Только `admin`/`hr`.
+
+```json
+{ "year": 2026, "entitlement": 28, "carryover": 3 }
+```
+
+При создании/изменении заявки на отпуск сервер проверяет остаток и возвращает `400`,
+если дней больше доступного.
 
 ## Служебные эндпоинты демо
 

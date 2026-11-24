@@ -249,6 +249,17 @@ export function EmployeeForm({
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues): Promise<SubmitResult> => {
+      const personalPayload: Partial<EmployeePayload> = {
+        lastName: values.lastName,
+        firstName: values.firstName,
+        middleName: values.middleName || undefined,
+        birthDate: values.birthDate,
+        gender: values.gender,
+        email: values.email,
+        phone: values.phone,
+        employmentType: values.employmentType,
+        education: values.education || undefined,
+      };
       const payload: EmployeePayload = {
         lastName: values.lastName,
         firstName: values.firstName,
@@ -267,21 +278,8 @@ export function EmployeeForm({
         education: values.education || undefined,
       };
 
-      if (employee && values.status === 'dismissed') {
-        const selected = Object.entries(reassignments).filter(([, target]) => target);
-        for (const [taskId, target] of selected) {
-          await api.tasks.update(taskId, { employeeId: target });
-        }
-        const selectedProjects = Object.entries(projectReassignments).filter(
-          ([, target]) => target,
-        );
-        for (const [projectId, target] of selectedProjects) {
-          await api.projects.update(projectId, { managerId: target });
-        }
-      }
-
       if (employee) {
-        const updated = await api.employees.update(employee.id, payload);
+        const updated = await api.employees.update(employee.id, personalPayload);
         return { employee: updated };
       }
 
@@ -427,8 +425,14 @@ export function EmployeeForm({
           <Input {...register('phone')} placeholder="+7 (900) 000-00-00" />
         </Field>
 
+        {employee ? (
+          <p className="border border-border bg-surface-2/50 px-3 py-2 text-[11px] leading-5 text-muted sm:col-span-2">
+            Подразделение, должность, руководитель, оклад, дата приёма и статус меняются
+            кадровыми событиями: «Перевод», «Повышение», «Увольнение».
+          </p>
+        ) : null}
         <Field label="Подразделение *" error={errors.departmentId?.message}>
-          <Select {...register('departmentId')}>
+          <Select {...register('departmentId')} disabled={Boolean(employee)}>
             {departments.map((department) => (
               <option key={department.id} value={department.id}>
                 {department.name}
@@ -437,7 +441,7 @@ export function EmployeeForm({
           </Select>
         </Field>
         <Field label="Должность *" error={errors.positionId?.message}>
-          <Select {...register('positionId')}>
+          <Select {...register('positionId')} disabled={Boolean(employee)}>
             {availablePositions.map((position) => (
               <option key={position.id} value={position.id}>
                 {position.name} · {position.family} · грейд {position.grade}
@@ -446,7 +450,7 @@ export function EmployeeForm({
           </Select>
         </Field>
         <Field label="Руководитель" error={errors.managerId?.message}>
-          <Select {...register('managerId')}>
+          <Select {...register('managerId')} disabled={Boolean(employee)}>
             <option value="">Не указан</option>
             {managers.map((manager) => (
               <option key={manager.id} value={manager.id}>
@@ -470,14 +474,14 @@ export function EmployeeForm({
           error={errors.hireDate?.message}
           hint="С этой даты в табеле начисляются явки; дни до приёма отмечаются как «—»"
         >
-          <Input type="date" {...register('hireDate')} />
+          <Input type="date" {...register('hireDate')} disabled={Boolean(employee)} />
         </Field>
         <Field
           label="Статус"
           error={errors.status?.message}
           hint={canDismiss ? undefined : 'Увольнение и восстановление выполняет администратор'}
         >
-          <Select {...register('status')}>
+          <Select {...register('status')} disabled={Boolean(employee)}>
             {Object.entries(employeeStatusMeta).map(([value, meta]) => (
               <option
                 key={value}
@@ -532,8 +536,9 @@ export function EmployeeForm({
             type="number"
             min={0}
             step={1000}
-            readOnly={!canEditSalary}
-            className={!canEditSalary ? 'cursor-not-allowed opacity-70' : undefined}
+            readOnly={!canEditSalary || Boolean(employee)}
+            disabled={Boolean(employee)}
+            className={!canEditSalary || employee ? 'cursor-not-allowed opacity-70' : undefined}
             {...register('salary', { valueAsNumber: true })}
           />
         </Field>

@@ -145,6 +145,42 @@ export function DashboardPage() {
             </div>
           </div>
 
+          {user?.role === 'admin' || user?.role === 'hr' ? (
+            <Card className="mt-5">
+              <CardHeader
+                title="Требуют внимания"
+                description="Что стоит проверить HR уже сегодня"
+                actions={
+                  <Link to="/absences?status=pending&scope=all" className="text-xs font-medium text-primary hover:underline">
+                    Все заявки
+                  </Link>
+                }
+              />
+              <div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                <Link
+                  to="/absences?status=pending&scope=all"
+                  className="flex items-center justify-between gap-3 px-5 py-3 transition hover:bg-surface-2/40"
+                >
+                  <span>
+                    <span className="block text-xs font-medium text-fg">Заявки на согласовании</span>
+                    <span className="block text-[10px] text-muted">отпуска, больничные, командировки</span>
+                  </span>
+                  <span className="text-2xl font-semibold tabular-nums text-fg">{data.pendingAbsences}</span>
+                </Link>
+                <Link
+                  to="/absences"
+                  className="flex items-center justify-between gap-3 px-5 py-3 transition hover:bg-surface-2/40"
+                >
+                  <span>
+                    <span className="block text-xs font-medium text-fg">Отсутствуют сегодня</span>
+                    <span className="block text-[10px] text-muted">отпуск, больничный, командировка</span>
+                  </span>
+                  <span className="text-2xl font-semibold tabular-nums text-fg">{data.absentToday}</span>
+                </Link>
+              </div>
+            </Card>
+          ) : null}
+
           <div className="mt-5 grid gap-4 xl:grid-cols-3">
             <div className="space-y-4 xl:col-span-2">
               <Card>

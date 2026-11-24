@@ -21,8 +21,10 @@ describe('seed data integrity', () => {
       db.projectTasks,
       db.absences,
       db.absenceTaskDecisions,
+      db.vacationBalances,
       db.events,
       db.users,
+      db.notifications,
     ];
     collections.forEach((items) => {
       const ids = items.map((item) => item.id);
@@ -76,6 +78,12 @@ describe('seed data integrity', () => {
       expect(task).toBeTruthy();
       expect(employeeIds.has(decision.fromEmployeeId)).toBe(true);
       if (decision.toEmployeeId) expect(employeeIds.has(decision.toEmployeeId)).toBe(true);
+    });
+    db.vacationBalances.forEach((balance) => {
+      expect(employeeIds.has(balance.employeeId)).toBe(true);
+    });
+    db.notifications.forEach((notification) => {
+      expect(db.users.some((user) => user.id === notification.userId)).toBe(true);
     });
   });
 

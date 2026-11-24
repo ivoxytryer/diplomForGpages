@@ -18,12 +18,12 @@ import {
 } from 'lucide-react';
 import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
-import type { Absence, ProjectTask } from '@/shared/types';
+import type { Absence, HrEventType, ProjectTask } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
 import { can, canViewSalary } from '@/shared/lib/permissions';
 import {
-  absenceStatusMeta,
+  absenceStatusDisplay,
   absenceTypeMeta,
   employeeStatusMeta,
   employmentTypeLabels,
@@ -51,6 +51,7 @@ import { AbsenceForm } from '@/features/absences/absence-form';
 import { AbsenceApprovalDialog } from '@/features/absences/absence-approval-dialog';
 import { EventForm } from '@/features/events/event-form';
 import { CreateUserDialog } from '@/features/users/create-user-dialog';
+import { VacationBalanceDialog } from '@/features/employees/vacation-balance-dialog';
 import { TaskForm } from '@/features/tasks/task-form';
 import { TaskList } from '@/features/tasks/task-list';
 import { useTaskActions } from '@/features/tasks/use-task-actions';
@@ -91,7 +92,9 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
   const [editOpen, setEditOpen] = useState(false);
   const [absenceOpen, setAbsenceOpen] = useState(false);
   const [approvalTarget, setApprovalTarget] = useState<Absence | null>(null);
+  const [balanceOpen, setBalanceOpen] = useState(false);
   const [eventOpen, setEventOpen] = useState(false);
+  const [eventType, setEventType] = useState<HrEventType>('promotion');
   const [accountOpen, setAccountOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
@@ -113,6 +116,14 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
     queryFn: () => api.absences.list({ employeeId: id }),
     enabled: Boolean(id),
   });
+
+  const currentYear = dayjs().year();
+  const vacationQuery = useQuery({
+    queryKey: ['vacations', id, currentYear],
+    queryFn: () => api.vacations.balances({ employeeId: id!, year: currentYear }),
+    enabled: Boolean(id),
+  });
+  const vacationBalance = vacationQuery.data?.find((item) => item.employeeId === id);
 
   const assignmentsQuery = useQuery({
     queryKey: ['assignments', { employeeId: id }],
@@ -149,6 +160,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
       api.absences.setStatus(absenceId, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['absences'] });
+      queryClient.invalidateQueries({ queryKey: ['vacations'] });
       queryClient.invalidateQueries({ queryKey: ['employee', id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Статус заявки обновлён');
@@ -190,9 +202,11 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
   }
 
   const canWrite = can(user?.role, 'employees:write');
+  const canManageBalance = user?.role === 'admin' || user?.role === 'hr';
   const canCreateAbsence =
     can(user?.role, 'absences:create') && (user?.role === 'admin' || user?.employeeId === id);
   const canApprove = can(user?.role, 'absences:approve');
+  const canConfirmSick = user?.role === 'admin' || user?.role === 'hr';
   const department = departmentById.get(employee.departmentId);
   const position = positionById.get(employee.positionId);
   const manager = employee.managerId ? employeeById.get(employee.managerId) : null;
@@ -259,8 +273,36 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
         actions={
           <>
             {canManageEvents && employee.status !== 'dismissed' ? (
-              <Button variant="outline" onClick={() => setEventOpen(true)}>
-                <TrendingUp /> Повышение
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEventType('transfer');
+                    setEventOpen(true);
+                  }}
+                >
+                  <TrendingUp /> Перевод
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEventType('promotion');
+                    setEventOpen(true);
+                  }}
+                >
+                  <TrendingUp /> Повышение
+                </Button>
+              </>
+            ) : null}
+            {user?.role === 'admin' && employee.status !== 'dismissed' ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEventType('dismissal');
+                  setEventOpen(true);
+                }}
+              >
+                <X /> Уволить
               </Button>
             ) : null}
             {canCreateAbsence && employee.status !== 'dismissed' ? (
@@ -427,16 +469,32 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                 <div className="flex items-end justify-between">
                   <div>
                     <p className="text-[11px] text-muted">Дней отпуска</p>
-                    <p className="text-2xl font-semibold text-fg">{vacationDays}</p>
+                    <p className="text-2xl font-semibold text-fg">
+                      {vacationBalance?.used ?? vacationDays}
+                    </p>
                   </div>
                   <div className="text-right">
                     <p className="text-[11px] text-muted">Дней больничного</p>
                     <p className="text-2xl font-semibold text-fg">{sickDays}</p>
                   </div>
                 </div>
-                <Progress value={Math.min(100, (vacationDays / 28) * 100)} tone="primary" />
+                <Progress
+                  value={Math.min(
+                    100,
+                    ((vacationBalance?.used ?? vacationDays) /
+                      Math.max(1, (vacationBalance?.entitlement ?? 28) + (vacationBalance?.carryover ?? 0))) *
+                      100,
+                  )}
+                  tone="primary"
+                />
                 <p className="text-[11px] text-muted">
-                  Использовано {vacationDays} из 28 дней основного отпуска
+                  Использовано {vacationBalance?.used ?? vacationDays} из{' '}
+                  {vacationBalance?.entitlement ?? 28} дней
+                  {vacationBalance?.carryover ? ` + ${vacationBalance.carryover} перенос` : ''}
+                </p>
+                <p className="text-[11px] text-muted">
+                  Остаток: <span className="font-medium text-fg">{vacationBalance?.remaining ?? 28}</span>
+                  {' '}· запланировано: {vacationBalance?.planned ?? 0}
                 </p>
               </CardContent>
             </Card>
@@ -602,7 +660,54 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
       ) : null}
 
       {tab === 'absences' ? (
-        <Card className="mt-4 overflow-hidden">
+        <>
+        <Card className="mt-4">
+          <CardHeader
+            title={`Остаток отпуска · ${currentYear}`}
+            description="Положено, использовано, запланировано и остаток в календарных днях"
+            actions={
+              canManageBalance ? (
+                <Button size="sm" variant="outline" onClick={() => setBalanceOpen(true)}>
+                  Изменить
+                </Button>
+              ) : null
+            }
+          />
+          <CardContent className="grid gap-3 py-4 sm:grid-cols-4">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted">Положено</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-fg">
+                {vacationBalance?.entitlement ?? 28}
+              </p>
+              {vacationBalance?.carryover ? (
+                <p className="text-[10px] text-muted">+{vacationBalance.carryover} перенос</p>
+              ) : null}
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted">Использовано</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-fg">
+                {vacationBalance?.used ?? 0}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted">Запланировано</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-fg">
+                {vacationBalance?.planned ?? 0}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted">Остаток</p>
+              <p
+                className={`mt-1 text-2xl font-semibold tabular-nums ${
+                  (vacationBalance?.remaining ?? 28) < 0 ? 'text-danger' : 'text-fg'
+                }`}
+              >
+                {vacationBalance?.remaining ?? 28}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="mt-3 overflow-hidden">
           <CardHeader
             title="Отпуска и отсутствия"
             description={`${absences.length} ${plural(absences.length, ['запись', 'записи', 'записей'])}`}
@@ -644,8 +749,8 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                       {absence.days}
                     </TD>
                     <TD>
-                      <Badge tone={absenceStatusMeta[absence.status].tone}>
-                        {absenceStatusMeta[absence.status].label}
+                      <Badge tone={absenceStatusDisplay(absence).tone}>
+                        {absenceStatusDisplay(absence).label}
                       </Badge>
                     </TD>
                     <TD className="max-w-[220px] truncate text-xs text-muted">{absence.reason || '—'}</TD>
@@ -654,22 +759,37 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                         {absence.status === 'pending' &&
                         (absence.employeeId !== user?.employeeId || user?.role === 'admin') ? (
                           <div className="flex justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setApprovalTarget(absence)}
-                              className="inline-flex size-8 items-center justify-center rounded-md text-fg transition hover:bg-surface-2"
-                              title="Согласовать"
-                            >
-                              <Check className="size-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => statusMutation.mutate({ absenceId: absence.id, status: 'rejected' })}
-                              className="inline-flex size-8 items-center justify-center rounded-md text-danger transition hover:bg-red-500/10"
-                              title="Отклонить"
-                            >
-                              <X className="size-4" />
-                            </button>
+                            {absence.type === 'sick' ? (
+                              canConfirmSick ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setApprovalTarget(absence)}
+                                  className="inline-flex size-8 items-center justify-center rounded-md text-success transition hover:bg-surface-2"
+                                  title="Подтвердить больничный"
+                                >
+                                  <Check className="size-4" />
+                                </button>
+                              ) : null
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setApprovalTarget(absence)}
+                                  className="inline-flex size-8 items-center justify-center rounded-md text-fg transition hover:bg-surface-2"
+                                  title="Согласовать"
+                                >
+                                  <Check className="size-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => statusMutation.mutate({ absenceId: absence.id, status: 'rejected' })}
+                                  className="inline-flex size-8 items-center justify-center rounded-md text-danger transition hover:bg-red-500/10"
+                                  title="Отклонить"
+                                >
+                                  <X className="size-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         ) : null}
                       </TD>
@@ -680,6 +800,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
             </Table>
           )}
         </Card>
+        </>
       ) : null}
 
       {tab === 'projects' ? (
@@ -829,7 +950,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
         open={eventOpen}
         onClose={() => setEventOpen(false)}
         defaultEmployeeId={employee.id}
-        defaultType="promotion"
+        defaultType={eventType}
         lockEmployee
       />
       <AbsenceForm
@@ -837,6 +958,13 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
         onClose={() => setAbsenceOpen(false)}
         defaultEmployeeId={employee.id}
         employees={[employee]}
+      />
+      <VacationBalanceDialog
+        open={balanceOpen}
+        onClose={() => setBalanceOpen(false)}
+        employeeId={employee.id}
+        year={currentYear}
+        balance={vacationBalance}
       />
       {accountOpen ? (
         <CreateUserDialog

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { AbsencePayload, Employee } from '@/shared/types';
@@ -55,6 +55,7 @@ export function AbsenceForm({
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -78,11 +79,26 @@ export function AbsenceForm({
     });
   }, [open, defaultEmployeeId, user?.employeeId, reset]);
 
+  const selectedEmployeeId = watch('employeeId');
+  const selectedType = watch('type');
+  const selectedStart = watch('startDate');
+  const balanceYear = Number((selectedStart || todayISO()).slice(0, 4));
+  const balanceQuery = useQuery({
+    queryKey: ['vacations', selectedEmployeeId, balanceYear],
+    queryFn: () =>
+      api.vacations.balances({ employeeId: selectedEmployeeId, year: balanceYear }),
+    enabled: open && Boolean(selectedEmployeeId),
+  });
+  const vacationBalance = balanceQuery.data?.find(
+    (item) => item.employeeId === selectedEmployeeId,
+  );
+
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
       api.absences.create({ ...values, reason: values.reason || undefined } as AbsencePayload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['absences'] });
+      queryClient.invalidateQueries({ queryKey: ['vacations'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Заявка создана', 'Она отправлена на согласование');
       onClose();
@@ -147,6 +163,12 @@ export function AbsenceForm({
         <Field label="Дата окончания *" error={errors.endDate?.message}>
           <Input type="date" {...register('endDate')} />
         </Field>
+        {selectedType === 'vacation' && vacationBalance ? (
+          <p className="text-[11px] text-muted sm:col-span-2">
+            Остаток отпуска на {balanceYear}: <span className="font-medium text-fg">{vacationBalance.remaining} дн.</span>
+            {' '}· использовано {vacationBalance.used} · запланировано {vacationBalance.planned}
+          </p>
+        ) : null}
         <Field label="Комментарий" error={errors.reason?.message} className="sm:col-span-2">
           <Textarea {...register('reason')} placeholder="Причина или дополнительная информация" />
         </Field>

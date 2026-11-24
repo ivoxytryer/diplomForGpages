@@ -1,4 +1,5 @@
 import type {
+  Absence,
   AbsenceStatus,
   AbsenceType,
   EmployeeStatus,
@@ -132,6 +133,20 @@ export const absenceStatusMeta: Record<AbsenceStatus, MetaEntry> = withFallback<
   },
   unknownMeta,
 );
+
+/** У больничного нет «согласования» — только подтверждение. */
+export function absenceStatusDisplay(absence: Pick<Absence, 'type' | 'status' | 'confirmedAt'>) {
+  if (absence.type === 'sick') {
+    if (absence.status === 'approved' || absence.confirmedAt) {
+      return { label: 'Подтверждён', tone: 'success' as Tone };
+    }
+    if (absence.status === 'pending') {
+      return { label: 'Ожидает подтверждения', tone: 'warning' as Tone };
+    }
+    return { label: 'Отклонён', tone: 'danger' as Tone };
+  }
+  return absenceStatusMeta[absence.status];
+}
 
 export const timesheetStatusMeta: Record<TimesheetStatus, MetaEntry> =
   withFallback<MetaEntry>(

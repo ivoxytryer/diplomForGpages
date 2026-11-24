@@ -32,9 +32,22 @@ import { Button } from '@/shared/ui/button';
 import { TBody, TD, TH, THead, TR, Table } from '@/shared/ui/table';
 import { useToast } from '@/shared/ui/toast';
 
-type ReportKey = 'timesheet' | 'projectTeams' | 'workload' | 'movement' | 'departments';
+type ReportKey =
+  | 'timesheet'
+  | 'projectTeams'
+  | 'workload'
+  | 'movement'
+  | 'vacations'
+  | 'departments';
 
-const reportKeys: ReportKey[] = ['timesheet', 'projectTeams', 'workload', 'movement', 'departments'];
+const reportKeys: ReportKey[] = [
+  'timesheet',
+  'projectTeams',
+  'workload',
+  'movement',
+  'vacations',
+  'departments',
+];
 
 interface ReportTable {
   title?: string;
@@ -70,9 +83,14 @@ const reportMeta: Record<ReportKey, { label: string; description: string; icon: 
     description: 'Приёмы, переводы, повышения и увольнения за месяц',
     icon: BarChart3,
   },
+  vacations: {
+    label: 'Остатки отпусков',
+    description: 'Положено, использовано, запланировано и остаток по сотрудникам',
+    icon: CalendarRange,
+  },
   departments: {
     label: 'Сводка по подразделениям',
-    description: 'Численность, статусы и фонд окладов',
+    description: 'Численность, статусы и вилки окладов по должностям',
     icon: Users,
   },
 };
@@ -120,6 +138,12 @@ export function ReportsPage() {
     queryKey: ['report', 'absences'],
     queryFn: () => api.absences.list({ status: 'approved' }),
     enabled: report === 'projectTeams',
+  });
+
+  const vacationsQuery = useQuery({
+    queryKey: ['report', 'vacations', period],
+    queryFn: () => api.vacations.balances({ year: Number(period.slice(0, 4)) }),
+    enabled: report === 'vacations',
   });
 
   const availableReports: ReportKey[] = reportKeys;
@@ -226,6 +250,74 @@ export function ReportsPage() {
             title: 'Итоги',
             columns: ['Показатель', 'Явки', 'Отпуска', 'Больничные', 'Командировки', 'Прогулы/неявки', 'Часы'],
             rows: [['Всего', totals.worked, totals.vacation, totals.sick, totals.trip, totals.absent, totals.hours]],
+          },
+        ],
+      };
+    }
+
+    if (report === 'vacations') {
+      if (!vacationsQuery.data) return null;
+      const year = Number(period.slice(0, 4));
+      const balances = vacationsQuery.data.filter((balance) =>
+        allScopedIds.has(balance.employeeId),
+      );
+      const rowsData = balances
+        .map((balance) => {
+          const employee = employeeById.get(balance.employeeId);
+          return [
+            employee ? fullName(employee) : balance.employeeId,
+            employee ? departmentById.get(employee.departmentId)?.name ?? '—' : '—',
+            balance.entitlement,
+            balance.carryover,
+            balance.used,
+            balance.planned,
+            balance.remaining,
+          ] as CellValue[];
+        })
+        .sort(
+          (a, b) =>
+            String(a[1]).localeCompare(String(b[1]), 'ru') ||
+            String(a[0]).localeCompare(String(b[0]), 'ru'),
+        );
+      const totals = balances.reduce(
+        (acc, balance) => ({
+          entitlement: acc.entitlement + balance.entitlement,
+          carryover: acc.carryover + balance.carryover,
+          used: acc.used + balance.used,
+          planned: acc.planned + balance.planned,
+          remaining: acc.remaining + balance.remaining,
+        }),
+        { entitlement: 0, carryover: 0, used: 0, planned: 0, remaining: 0 },
+      );
+      return {
+        title: `Остатки отпусков · ${year}`,
+        subtitle: `${deptName} · сотрудников ${balances.length}`,
+        tables: [
+          {
+            columns: [
+              'Сотрудник',
+              'Подразделение',
+              'Положено',
+              'Перенос',
+              'Использовано',
+              'Запланировано',
+              'Остаток',
+            ],
+            rows: rowsData,
+          },
+          {
+            title: 'Итоги',
+            columns: ['Показатель', 'Положено', 'Перенос', 'Использовано', 'Запланировано', 'Остаток'],
+            rows: [
+              [
+                'Всего',
+                totals.entitlement,
+                totals.carryover,
+                totals.used,
+                totals.planned,
+                totals.remaining,
+              ],
+            ],
           },
         ],
       };
@@ -478,12 +570,8 @@ export function ReportsPage() {
         staff.filter((employee) => employee.status === 'vacation').length,
         staff.filter((employee) => employee.status === 'sick_leave').length,
       ];
-      if (canSeeSalaries) {
-        row.push(staff.reduce((sum, employee) => sum + (employee.salary ?? 0), 0));
-      }
       return row;
     });
-    const totalFund = rowsData.reduce((sum, row) => sum + Number(row[7] ?? 0), 0);
     const departmentColumns = [
       'Подразделение',
       'Код',
@@ -495,11 +583,6 @@ export function ReportsPage() {
     ];
     const totalColumns = ['Показатель', 'Численность'];
     const totalRow: CellValue[] = ['Всего', scopedEmployees.length];
-    if (canSeeSalaries) {
-      departmentColumns.push('Фонд окладов');
-      totalColumns.push('Фонд окладов');
-      totalRow.push(totalFund);
-    }
 
     const staffingRows = positions
       .filter((position) => !scopedDepartmentId || position.departmentId === scopedDepartmentId)
@@ -539,13 +622,11 @@ export function ReportsPage() {
         {
           columns: departmentColumns,
           rows: rowsData,
-          moneyColumns: canSeeSalaries ? [7] : undefined,
         },
         {
           title: 'Итоги',
           columns: totalColumns,
           rows: [totalRow],
-          moneyColumns: canSeeSalaries ? [2] : undefined,
         },
         {
           title: 'Должности',
@@ -566,6 +647,7 @@ export function ReportsPage() {
     eventsQuery.data,
     assignmentsQuery.data,
     absencesQuery.data,
+    vacationsQuery.data,
     assignments,
     activeAssignments,
     projectFilter,
@@ -584,7 +666,9 @@ export function ReportsPage() {
       ? timesheetQuery
       : report === 'movement'
         ? eventsQuery
-        : assignmentsQuery;
+        : report === 'vacations'
+          ? vacationsQuery
+          : assignmentsQuery;
 
   const handleExport = () => {
     if (!data) return;

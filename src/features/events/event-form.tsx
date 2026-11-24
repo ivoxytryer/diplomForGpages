@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { HrEventPayload, HrEventType } from '@/shared/types';
 import { eventTypeMeta } from '@/shared/lib/meta';
 import { useAuthStore } from '@/features/auth/auth-store';
+import { TaskReassignBlock } from '@/features/employees/task-reassign-block';
+import { ProjectReassignBlock } from '@/features/employees/project-reassign-block';
 import { can } from '@/shared/lib/permissions';
 import { useLookups } from '@/shared/hooks/use-lookups';
 import { fullName, todayISO } from '@/shared/lib/utils';
@@ -48,7 +50,7 @@ export function EventForm({
   defaultType?: HrEventType;
   lockEmployee?: boolean;
 }) {
-  const { employees, departments, positions, employeeById } = useLookups();
+  const { employees, departments, positions, employeeById, projects, projectById } = useLookups();
   const role = useAuthStore((state) => state.user?.role);
   const canEditSalary = can(role, 'salary:write');
   const queryClient = useQueryClient();
@@ -56,6 +58,8 @@ export function EventForm({
   const [values, setValues] = useState<HrEventPayload>(() =>
     defaults(defaultEmployeeId, defaultType),
   );
+  const [reassignments, setReassignments] = useState<Record<string, string>>({});
+  const [projectReassignments, setProjectReassignments] = useState<Record<string, string>>({});
   const availableTypes = eventTypes.filter((type) => {
     if (type === 'dismissal' && role !== 'admin') return false;
     if (type === 'salary_change' && !canEditSalary) return false;
@@ -65,10 +69,51 @@ export function EventForm({
   useEffect(() => {
     if (!open) return;
     setValues(defaults(defaultEmployeeId, defaultType));
+    setReassignments({});
+    setProjectReassignments({});
   }, [open, defaultEmployeeId, defaultType]);
 
+  const reassignEnabled =
+    open && values.type === 'dismissal' && Boolean(values.employeeId) && role === 'admin';
+  const activeTasksQuery = useQuery({
+    queryKey: ['tasks', 'reassign', values.employeeId],
+    queryFn: () => api.tasks.list({ employeeId: values.employeeId, status: 'todo' }),
+    enabled: reassignEnabled,
+  });
+  const reassignAssignmentsQuery = useQuery({
+    queryKey: ['assignments', 'reassign'],
+    queryFn: () => api.assignments.list(),
+    enabled: reassignEnabled,
+  });
+  const activeTasks = activeTasksQuery.data ?? [];
+  const reassignAssignments = reassignAssignmentsQuery.data ?? [];
+  const managedProjects = values.employeeId
+    ? projects.filter((project) => project.managerId === values.employeeId)
+    : [];
+  const pendingTasks = activeTasks.filter((task) => !reassignments[task.id]);
+  const pendingProjects = managedProjects.filter(
+    (project) => !projectReassignments[project.id],
+  );
+  const dismissalBlocked =
+    reassignEnabled &&
+    (activeTasksQuery.isLoading ||
+      pendingTasks.length > 0 ||
+      pendingProjects.length > 0);
+
   const mutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      if (values.type === 'dismissal' && values.employeeId) {
+        for (const [taskId, target] of Object.entries(reassignments).filter(
+          ([, target]) => target,
+        )) {
+          await api.tasks.update(taskId, { employeeId: target });
+        }
+        for (const [projectId, target] of Object.entries(projectReassignments).filter(
+          ([, target]) => target,
+        )) {
+          await api.projects.update(projectId, { managerId: target });
+        }
+      }
       const payload: HrEventPayload = {
         ...values,
         description: values.description || undefined,
@@ -83,6 +128,12 @@ export function EventForm({
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employee'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['project'] });
+      queryClient.invalidateQueries({ queryKey: ['assignments'] });
+      queryClient.invalidateQueries({ queryKey: ['timesheet'] });
+      queryClient.invalidateQueries({ queryKey: ['workload'] });
       queryClient.invalidateQueries({ queryKey: ['audit'] });
       toast.success('Кадровое событие создано');
       onClose();
@@ -157,7 +208,11 @@ export function EventForm({
     }
   }
   const valid = Boolean(
-    values.employeeId && values.date && values.title.trim() && !positionError,
+    values.employeeId &&
+      values.date &&
+      values.title.trim() &&
+      !positionError &&
+      !dismissalBlocked,
   );
 
   return (
@@ -344,9 +399,38 @@ export function EventForm({
         </Field>
 
         {values.type === 'dismissal' ? (
-          <div className="rounded-lg border border-danger/30 px-3 py-2 text-[11px] text-danger sm:col-span-2">
-            После создания события сотрудник получит статус «Уволен» и дату увольнения.
-          </div>
+          <>
+            <div className="border border-danger/30 px-3 py-2 text-[11px] text-danger sm:col-span-2">
+              После создания события сотрудник получит статус «Уволен», а доступ будет заблокирован.
+            </div>
+            <TaskReassignBlock
+              tasks={activeTasks}
+              assignments={reassignAssignments}
+              employees={employees}
+              projectById={projectById}
+              excludeEmployeeId={values.employeeId}
+              value={reassignments}
+              onChange={(taskId, target) =>
+                setReassignments((previous) => ({ ...previous, [taskId]: target }))
+              }
+              mode="dismiss"
+            />
+            <ProjectReassignBlock
+              projects={managedProjects}
+              employees={employees}
+              excludeEmployeeId={values.employeeId}
+              value={projectReassignments}
+              onChange={(projectId, target) =>
+                setProjectReassignments((previous) => ({ ...previous, [projectId]: target }))
+              }
+            />
+            {dismissalBlocked && !activeTasksQuery.isLoading ? (
+              <p className="text-[11px] text-muted sm:col-span-2">
+                Осталось переназначить: задачи — {pendingTasks.length}, проекты —{' '}
+                {pendingProjects.length}.
+              </p>
+            ) : null}
+          </>
         ) : null}
         {values.type === 'hire' ? (
           <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-[11px] text-fg sm:col-span-2">

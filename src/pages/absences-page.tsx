@@ -9,7 +9,7 @@ import type { Absence, AbsenceStatus } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { useDebounced, useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
 import { can } from '@/shared/lib/permissions';
-import { absenceStatusMeta, absenceTypeMeta } from '@/shared/lib/meta';
+import { absenceStatusDisplay, absenceTypeMeta } from '@/shared/lib/meta';
 import {
   datesOfMonth,
   formatDate,
@@ -65,6 +65,7 @@ export function AbsencesPage() {
 
   const isEmployee = user?.role === 'employee';
   const canApprove = can(user?.role, 'absences:approve');
+  const canConfirmSick = user?.role === 'admin' || user?.role === 'hr';
   const canCreateAbsence = can(user?.role, 'absences:create');
   const scopedDepartmentId = managerDepartmentId ?? (departmentId || undefined);
 
@@ -82,6 +83,7 @@ export function AbsencesPage() {
     mutationFn: ({ id, next }: { id: string; next: AbsenceStatus }) => api.absences.setStatus(id, next),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['absences'] });
+      queryClient.invalidateQueries({ queryKey: ['vacations'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['timesheet'] });
       queryClient.invalidateQueries({ queryKey: ['employee'] });
@@ -265,6 +267,7 @@ export function AbsencesPage() {
                 {absences.map((absence: Absence) => {
                   const employee = employeeById.get(absence.employeeId);
                   const meta = absenceTypeMeta[absence.type];
+                  const statusDisplay = absenceStatusDisplay(absence);
                   return (
                     <TR key={absence.id}>
                       {!isEmployee ? (
@@ -288,9 +291,7 @@ export function AbsencesPage() {
                         {absence.days}
                       </TD>
                       <TD>
-                        <Badge tone={absenceStatusMeta[absence.status].tone}>
-                          {absenceStatusMeta[absence.status].label}
-                        </Badge>
+                        <Badge tone={statusDisplay.tone}>{statusDisplay.label}</Badge>
                       </TD>
                       <TD className="max-w-[240px] truncate text-xs text-muted">{absence.reason || '—'}</TD>
                       {canApprove ? (
@@ -298,25 +299,41 @@ export function AbsencesPage() {
                           {absence.status === 'pending' &&
                           (absence.employeeId !== user?.employeeId || user?.role === 'admin') ? (
                             <div className="flex justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => requestApproval(absence)}
-                                className="inline-flex size-8 items-center justify-center rounded-md text-fg transition hover:bg-surface-2"
-                                title="Согласовать"
-                              >
-                                <Check className="size-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => statusMutation.mutate({ id: absence.id, next: 'rejected' })}
-                                className="inline-flex size-8 items-center justify-center rounded-md text-danger transition hover:bg-red-500/10"
-                                title="Отклонить"
-                              >
-                                <X className="size-4" />
-                              </button>
+                              {absence.type === 'sick' ? (
+                                canConfirmSick ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => requestApproval(absence)}
+                                    className="inline-flex size-8 items-center justify-center rounded-md text-success transition hover:bg-surface-2"
+                                    title="Подтвердить больничный"
+                                  >
+                                    <Check className="size-4" />
+                                  </button>
+                                ) : null
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => requestApproval(absence)}
+                                    className="inline-flex size-8 items-center justify-center rounded-md text-fg transition hover:bg-surface-2"
+                                    title="Согласовать"
+                                  >
+                                    <Check className="size-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => statusMutation.mutate({ id: absence.id, next: 'rejected' })}
+                                    className="inline-flex size-8 items-center justify-center rounded-md text-danger transition hover:bg-red-500/10"
+                                    title="Отклонить"
+                                  >
+                                    <X className="size-4" />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           ) : null}
                           {absence.status === 'approved' &&
+                          absence.type !== 'sick' &&
                           (absence.employeeId !== user?.employeeId || user?.role === 'admin') ? (
                             <div className="flex justify-end gap-1">
                               <button
@@ -385,7 +402,7 @@ export function AbsencesPage() {
                         <div
                           key={absence.id}
                           className={`truncate rounded px-1 py-0.5 text-[9px] font-medium ${absenceChipTone[meta.tone]}`}
-                          title={`${fullName(employee)} · ${meta.label} · ${absenceStatusMeta[absence.status].label}`}
+                          title={`${fullName(employee)} · ${meta.label} · ${absenceStatusDisplay(absence).label}`}
                         >
                           {shortName(employee)} · {meta.code}
                         </div>

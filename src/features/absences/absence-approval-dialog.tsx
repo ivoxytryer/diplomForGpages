@@ -67,6 +67,8 @@ export function AbsenceApprovalDialog({
     });
   }, [absence, handoverQuery.data]);
 
+  const isSick = absence?.type === 'sick';
+
   const updateDecision = (taskId: string, patch: Partial<AbsenceTaskDecision>) => {
     setDecisions((previous) => ({
       ...previous,
@@ -79,17 +81,19 @@ export function AbsenceApprovalDialog({
       api.absences.setStatus(absence!.id, 'approved', Object.values(decisions)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['absences'] });
+      queryClient.invalidateQueries({ queryKey: ['vacations'] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['project'] });
       queryClient.invalidateQueries({ queryKey: ['employee'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['timesheet'] });
       queryClient.invalidateQueries({ queryKey: ['audit'] });
-      toast.success('Отсутствие согласовано');
+      toast.success(isSick ? 'Больничный подтверждён' : 'Отсутствие согласовано');
       onApproved();
       onClose();
     },
-    onError: (error) => toast.error('Не удалось согласовать', getErrorMessage(error)),
+    onError: (error) =>
+      toast.error(isSick ? 'Не удалось подтвердить больничный' : 'Не удалось согласовать', getErrorMessage(error)),
   });
 
   const valid = Boolean(
@@ -109,7 +113,7 @@ export function AbsenceApprovalDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title="Согласование отсутствия"
+      title={isSick ? 'Подтверждение больничного' : 'Согласование отсутствия'}
       description={
         absence
           ? `${absenceTypeMeta[absence.type].label} · ${formatDate(absence.startDate)} — ${formatDate(absence.endDate)}`
@@ -122,7 +126,7 @@ export function AbsenceApprovalDialog({
             Отмена
           </Button>
           <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!valid}>
-            Согласовать
+            {isSick ? 'Подтвердить больничный' : 'Согласовать'}
           </Button>
         </>
       }

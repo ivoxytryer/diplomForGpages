@@ -4,6 +4,7 @@ import { Briefcase, Pencil, Plus, Trash2 } from 'lucide-react';
 import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { Position, PositionPayload } from '@/shared/types';
+import { useAuthStore } from '@/features/auth/auth-store';
 import { useLookups } from '@/shared/hooks/use-lookups';
 import { POSITION_FAMILIES, POSITION_GRADES, POSITION_GRADE_LABELS } from '@/shared/lib/enums';
 import { formatMoney } from '@/shared/lib/utils';
@@ -163,6 +164,9 @@ function PositionFormDialog({
   position: Position | null;
 }) {
   const { departments } = useLookups();
+  const role = useAuthStore((state) => state.user?.role);
+  const canEditSalary = role === 'admin';
+  const salaryLocked = Boolean(position) && !canEditSalary;
   const queryClient = useQueryClient();
   const toast = useToast();
   const [values, setValues] = useState<PositionPayload>({
@@ -275,11 +279,12 @@ function PositionFormDialog({
           </Select>
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Оклад от, ₽">
+          <Field label="Оклад от, ₽" hint={salaryLocked ? 'Вилку изменяет администратор' : undefined}>
             <Input
               type="number"
               min={0}
               value={values.salaryMin}
+              disabled={salaryLocked}
               onChange={(event) =>
                 setValues((prev) => ({ ...prev, salaryMin: Number(event.target.value) }))
               }
@@ -287,6 +292,7 @@ function PositionFormDialog({
           </Field>
           <Field
             label="Оклад до, ₽"
+            hint={salaryLocked ? 'Вилку изменяет администратор' : undefined}
             error={
               values.salaryMin > values.salaryMax
                 ? 'Максимум должен быть не меньше минимума'
@@ -297,6 +303,7 @@ function PositionFormDialog({
               type="number"
               min={0}
               value={values.salaryMax}
+              disabled={salaryLocked}
               onChange={(event) =>
                 setValues((prev) => ({ ...prev, salaryMax: Number(event.target.value) }))
               }

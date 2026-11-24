@@ -196,6 +196,9 @@ export interface Absence {
   reason?: string;
   createdAt: string;
   approvedBy?: string | null;
+  /** Больничный подтверждён HR/администратором. */
+  confirmedAt?: string | null;
+  confirmedBy?: string | null;
 }
 
 export type HrEventType =
@@ -227,20 +230,38 @@ export interface HrEvent {
   absenceId?: string | null;
 }
 
-export interface Payslip {
+export type NotificationType =
+  | 'absence_request'
+  | 'absence_decision'
+  | 'task_assigned'
+  | 'task_completed'
+  | 'project_transfer'
+  | 'account';
+
+export interface Notification {
   id: string;
-  period: string;
-  employeeId: string;
-  baseSalary: number;
-  normDays: number;
-  paidDays: number;
-  workedDays: number;
-  bonus: number;
-  gross: number;
-  ndfl: number;
-  net: number;
-  status: 'draft' | 'approved';
+  userId: string;
+  type: NotificationType;
+  title: string;
+  body?: string;
+  link?: string;
   createdAt: string;
+  readAt?: string | null;
+}
+
+export interface VacationBalance {
+  id: string;
+  employeeId: string;
+  year: number;
+  entitlement: number;
+  carryover: number;
+  updatedAt: string;
+}
+
+export interface VacationBalanceView extends VacationBalance {
+  used: number;
+  planned: number;
+  remaining: number;
 }
 
 export interface User {
@@ -292,9 +313,10 @@ export interface Db {
   projectTasks: ProjectTask[];
   absences: Absence[];
   absenceTaskDecisions: AbsenceTaskDecisionRecord[];
+  vacationBalances: VacationBalance[];
   events: HrEvent[];
   users: User[];
-  payslips: Payslip[];
+  notifications: Notification[];
   audit: AuditEntry[];
   timesheetOverrides: Record<string, TimesheetOverride[]>;
   timesheetStatuses: Record<string, TimesheetStatus>;
@@ -335,7 +357,6 @@ export interface DashboardData {
   dynamics: { month: string; hired: number; dismissed: number }[];
   teamByProject: { name: string; count: number }[];
   birthdays: { employeeId: string; date: string; daysLeft: number }[];
-  probationEnding: { employeeId: string; date: string; daysLeft: number }[];
   recentEvents: HrEvent[];
 }
 

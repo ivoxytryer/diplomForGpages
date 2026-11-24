@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import type {
   Absence,
   Assignment,
@@ -9,6 +10,7 @@ import type {
   Position,
   Project,
   ProjectTaskStatus,
+  VacationBalance,
 } from '@/shared/types';
 import { createSeed, seedPositions, seedProjectTasks } from './data';
 import { hashPassword } from './password';
@@ -54,6 +56,8 @@ function migrate(db: Db): Db {
   ensureArray('assignments', [] as Assignment[]);
   ensureArray('absences', [] as Absence[]);
   ensureArray('absenceTaskDecisions', []);
+  ensureArray('vacationBalances', []);
+  ensureArray('notifications', []);
   ensureArray('events', [] as HrEvent[]);
   ensureArray('audit', [] as AuditEntry[]);
 
@@ -133,6 +137,19 @@ function migrate(db: Db): Db {
     });
   });
 
+  // Испытательный срок не требует ручного действия: если он истёк,
+  // сотрудник автоматически переходит в статус «Работает».
+  const today = dayjs().startOf('day');
+  db.employees.forEach((employee) => {
+    if (
+      employee.status === 'probation' &&
+      !dayjs(employee.hireDate).add(3, 'month').isAfter(today)
+    ) {
+      employee.status = 'active';
+      changed = true;
+    }
+  });
+
   db.projects.forEach((project) => {
     const status = oneOf(project.status, PROJECT_STATUSES, 'planning');
     if (status !== project.status) {
@@ -162,6 +179,15 @@ function migrate(db: Db): Db {
       absence.days = breakdown.days;
       absence.workingDays = breakdown.workingDays;
       absence.calendarDays = breakdown.calendarDays;
+      changed = true;
+    }
+    if (
+      absence.type === 'sick' &&
+      absence.status === 'approved' &&
+      !absence.confirmedAt
+    ) {
+      absence.confirmedAt = absence.createdAt;
+      absence.confirmedBy = absence.approvedBy ?? null;
       changed = true;
     }
     return true;
@@ -240,6 +266,41 @@ function migrate(db: Db): Db {
       changed = true;
     }
   });
+
+  // Старые демо-базы не знали об остатках отпусков — создаём их для активных.
+  const currentYear = new Date().getFullYear();
+  let vacationSequence = db.vacationBalances.reduce((max, balance) => {
+    const numeric = Number(balance.id.replace(/\D/g, ''));
+    return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
+  }, 0);
+  db.employees
+    .filter((employee) => employee.status !== 'dismissed')
+    .forEach((employee) => {
+      if (
+        db.vacationBalances.some(
+          (balance) => balance.employeeId === employee.id && balance.year === currentYear,
+        )
+      ) {
+        return;
+      }
+      vacationSequence += 1;
+      const balance: VacationBalance = {
+        id: `vb${String(vacationSequence).padStart(3, '0')}`,
+        employeeId: employee.id,
+        year: currentYear,
+        entitlement: 28,
+        carryover: 0,
+        updatedAt: new Date().toISOString(),
+      };
+      db.vacationBalances.push(balance);
+      changed = true;
+    });
+
+  const legacyDb = db as Db & { payslips?: unknown };
+  if ('payslips' in legacyDb) {
+    delete legacyDb.payslips;
+    changed = true;
+  }
 
   // Старые события об отпусках создавались без ссылки на заявку — связываем их,
   // чтобы правка и удаление заявки синхронизировались с лентой событий.

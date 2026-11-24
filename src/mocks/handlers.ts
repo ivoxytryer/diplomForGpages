@@ -20,6 +20,7 @@ import type {
   EmployeePayload,
   HrEvent,
   HrEventPayload,
+  Notification,
   Position,
   PositionPayload,
   Project,
@@ -32,6 +33,7 @@ import type {
   TimesheetCode,
   TimesheetStatus,
   User,
+  VacationBalanceView,
 } from '@/shared/types';
 import {
   formatDate,
@@ -111,6 +113,18 @@ const employeeFields = [
   'status',
   'employmentType',
   'salary',
+  'education',
+] as const satisfies readonly (keyof EmployeePayload)[];
+
+const personalEmployeeFields = [
+  'lastName',
+  'firstName',
+  'middleName',
+  'birthDate',
+  'gender',
+  'email',
+  'phone',
+  'employmentType',
   'education',
 ] as const satisfies readonly (keyof EmployeePayload)[];
 
@@ -275,6 +289,7 @@ function employeeRole(db: Db, employeeId: string): Role {
 function canApproveAbsenceFor(db: Db, actor: User, absence: Absence) {
   if (!can(actor.role, 'absences:approve')) return false;
   if (actor.role === 'admin') return true;
+  if (absence.type === 'sick' && actor.role === 'manager') return false;
   if (actor.employeeId && actor.employeeId === absence.employeeId) return false;
 
   const requesterRole = employeeRole(db, absence.employeeId);
@@ -316,6 +331,165 @@ function assignmentLoadAt(
   excludeAssignmentId?: string,
 ) {
   return calculateLoad(db.assignments, db.projects, employeeId, date, excludeAssignmentId);
+}
+
+/**
+ * Единая граница видимости сотрудников.
+ * admin/hr — все; manager — подразделения и команды своих проектов; employee — только себя.
+ */
+function scopeEmployeeIds(db: Db, actor: User) {
+  const all = new Set(db.employees.map((employee) => employee.id));
+  if (actor.role === 'admin' || actor.role === 'hr') return all;
+
+  const result = new Set<string>();
+  if (!actor.employeeId) return result;
+  result.add(actor.employeeId);
+
+  if (actor.role === 'employee') {
+    const own = db.employees.find((employee) => employee.id === actor.employeeId);
+    if (own?.managerId) result.add(own.managerId);
+    const head = db.departments.find((department) => department.id === own?.departmentId)?.headId;
+    if (head) result.add(head);
+    return result;
+  }
+
+  const departments = managerScopeDepartmentIds(db, actor.employeeId);
+  db.employees.forEach((employee) => {
+    if (departments.has(employee.departmentId)) result.add(employee.id);
+  });
+  const managedProjects = new Set(
+    db.projects.filter((project) => project.managerId === actor.employeeId).map((project) => project.id),
+  );
+  db.assignments.forEach((assignment) => {
+    if (managedProjects.has(assignment.projectId)) result.add(assignment.employeeId);
+  });
+  return result;
+}
+
+function dataScopeEmployeeIds(db: Db, actor: User) {
+  if (actor.role === 'employee') {
+    return new Set(actor.employeeId ? [actor.employeeId] : []);
+  }
+  return scopeEmployeeIds(db, actor);
+}
+
+function canReadEmployee(db: Db, actor: User, employeeId: string) {
+  return scopeEmployeeIds(db, actor).has(employeeId);
+}
+
+function canReadProject(db: Db, actor: User, projectId: string) {
+  if (actor.role === 'admin' || actor.role === 'hr' || actor.role === 'manager') return true;
+  return db.assignments.some(
+    (assignment) => assignment.projectId === projectId && assignment.employeeId === actor.employeeId,
+  );
+}
+
+function canReadAbsence(db: Db, actor: User, employeeId: string) {
+  return scopeEmployeeIds(db, actor).has(employeeId);
+}
+
+function canReadTimesheet(db: Db, actor: User, employeeId: string) {
+  return scopeEmployeeIds(db, actor).has(employeeId);
+}
+
+function pushNotification(
+  db: Db,
+  notification: Omit<Notification, 'id' | 'createdAt' | 'readAt'>,
+) {
+  db.notifications.push({
+    ...notification,
+    id: nextId('n', db.notifications),
+    createdAt: new Date().toISOString(),
+    readAt: null,
+  });
+}
+
+function employeeUser(db: Db, employeeId: string | null | undefined) {
+  if (!employeeId) return null;
+  return db.users.find((user) => user.employeeId === employeeId && user.isActive) ?? null;
+}
+
+function notifyEmployee(db: Db, employeeId: string | null | undefined, payload: Omit<Notification, 'id' | 'userId' | 'createdAt' | 'readAt'>) {
+  const user = employeeUser(db, employeeId);
+  if (!user) return;
+  pushNotification(db, { ...payload, userId: user.id });
+}
+
+function notifyHrAndAdmin(db: Db, payload: Omit<Notification, 'id' | 'userId' | 'createdAt' | 'readAt'>, excludeUserId?: string) {
+  db.users
+    .filter(
+      (user) =>
+        user.isActive &&
+        user.id !== excludeUserId &&
+        (user.role === 'hr' || user.role === 'admin'),
+    )
+    .forEach((user) => pushNotification(db, { ...payload, userId: user.id }));
+}
+
+function vacationBalanceView(
+  db: Db,
+  employeeId: string,
+  year: number,
+  excludeAbsenceId?: string,
+): VacationBalanceView {
+
+  const balance =
+    db.vacationBalances.find(
+      (item) => item.employeeId === employeeId && item.year === year,
+    ) ??
+    ({
+      id: `default-${employeeId}-${year}`,
+      employeeId,
+      year,
+      entitlement: 28,
+      carryover: 0,
+      updatedAt: new Date().toISOString(),
+    });
+
+  const today = todayISO();
+  const vacations = db.absences.filter(
+    (absence) =>
+      absence.employeeId === employeeId &&
+      absence.type === 'vacation' &&
+      absence.id !== excludeAbsenceId &&
+      absence.status !== 'rejected' &&
+      absence.startDate.slice(0, 4) === String(year),
+  );
+  const used = vacations
+    .filter((absence) => absence.status === 'approved' && absence.startDate <= today)
+    .reduce((sum, absence) => sum + absence.days, 0);
+  const planned = vacations
+    .filter(
+      (absence) =>
+        absence.status === 'pending' ||
+        (absence.status === 'approved' && absence.startDate > today),
+    )
+    .reduce((sum, absence) => sum + absence.days, 0);
+
+  return {
+    ...balance,
+    used,
+    planned,
+    remaining: balance.entitlement + balance.carryover - used - planned,
+  };
+}
+
+function vacationLimitError(
+  db: Db,
+  employeeId: string,
+  type: Absence['type'],
+  startDate: string,
+  endDate: string,
+  excludeAbsenceId?: string,
+) {
+  if (type !== 'vacation') return null;
+  const year = Number(startDate.slice(0, 4));
+  const days = absenceDayBreakdown(type, startDate, endDate).days;
+  const balance = vacationBalanceView(db, employeeId, year, excludeAbsenceId);
+  if (days > balance.remaining) {
+    return `Недостаточно дней отпуска: остаток ${balance.remaining}, запрошено ${days}`;
+  }
+  return null;
 }
 
 function validateOverload(
@@ -616,21 +790,70 @@ export const handlers = [
     return HttpResponse.json(user);
   }),
 
+  http.get(`${BASE}/notifications`, ({ request }) => {
+    const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
+    const url = new URL(request.url);
+    const unreadOnly = url.searchParams.get('unread') === 'true';
+    const items = db.notifications
+      .filter((notification) => notification.userId === user.id)
+      .filter((notification) => !unreadOnly || !notification.readAt)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return HttpResponse.json(items);
+  }),
+
+  http.patch(`${BASE}/notifications/read-all`, ({ request }) => {
+    const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
+    const at = new Date().toISOString();
+    db.notifications.forEach((notification) => {
+      if (notification.userId === user.id && !notification.readAt) {
+        notification.readAt = at;
+      }
+    });
+    saveDb(db);
+    return HttpResponse.json({ ok: true });
+  }),
+
+  http.patch(`${BASE}/notifications/:id/read`, ({ params, request }) => {
+    const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
+    const notification = db.notifications.find(
+      (item) => item.id === params.id && item.userId === user.id,
+    );
+    if (!notification) return notFound('Уведомление не найдено');
+    notification.readAt = new Date().toISOString();
+    saveDb(db);
+    return HttpResponse.json(notification);
+  }),
+
   http.get(`${BASE}/dashboard`, ({ request }) => {
     const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
+    if (user.role === 'employee') return forbidden('Дашборд недоступен сотруднику');
     const url = new URL(request.url);
     const departmentId = str(url, 'departmentId');
     const today = todayISO();
     const currentMonth = monthKey();
+    const managerDepartments =
+      user.role === 'manager' && user.employeeId
+        ? managerScopeDepartmentIds(db, user.employeeId)
+        : null;
+    if (departmentId && managerDepartments && !managerDepartments.has(departmentId)) {
+      return forbidden('Нет доступа к этому подразделению');
+    }
     const employees = db.employees.filter(
-      (employee) => employee.status !== 'dismissed' && (!departmentId || employee.departmentId === departmentId),
+      (employee) =>
+        employee.status !== 'dismissed' &&
+        (!departmentId || employee.departmentId === departmentId) &&
+        (!managerDepartments || managerDepartments.has(employee.departmentId)),
     );
     const ids = new Set(employees.map((employee) => employee.id));
-    const eventEmployeeIds = new Set(
-      db.employees
-        .filter((employee) => !departmentId || employee.departmentId === departmentId)
-        .map((employee) => employee.id),
-    );
+    const eventEmployeeIds = new Set(employees.map((employee) => employee.id));
     const activeProjects = db.projects.filter((project) => project.status === 'active');
     const totalAllocation = employees.reduce(
       (sum, employee) =>
@@ -681,19 +904,6 @@ export const handlers = [
       .filter((item) => item.daysLeft <= 30)
       .sort((a, b) => a.daysLeft - b.daysLeft);
 
-    const probationEnding = employees
-      .filter((employee) => employee.status === 'probation')
-      .map((employee) => {
-        const end = dayjs(employee.hireDate).add(3, 'month');
-        return {
-          employeeId: employee.id,
-          date: end.format('YYYY-MM-DD'),
-          daysLeft: end.startOf('day').diff(dayjs().startOf('day'), 'day'),
-        };
-      })
-      .filter((item) => item.daysLeft >= 0 && item.daysLeft <= 30)
-      .sort((a, b) => a.daysLeft - b.daysLeft);
-
     const absentToday = db.absences.filter(
       (absence) =>
         ids.has(absence.employeeId) &&
@@ -735,7 +945,6 @@ export const handlers = [
       dynamics,
       teamByProject: teamByProject.sort((a, b) => b.count - a.count).slice(0, 6),
       birthdays,
-      probationEnding,
       recentEvents,
     };
     return HttpResponse.json(data);
@@ -744,10 +953,14 @@ export const handlers = [
   http.get(`${BASE}/employees`, ({ request }) => {
     const db = loadDb();
     const viewer = authUser(request, db);
+    if (!viewer) return unauthorized('Сессия истекла');
     const url = new URL(request.url);
     const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
     const pageSize = Math.max(1, Math.min(500, Number(url.searchParams.get('pageSize') ?? 20)));
-    const items = scoreEmployees(db, url.searchParams);
+    const allowed = scopeEmployeeIds(db, viewer);
+    const items = scoreEmployees(db, url.searchParams).filter((employee) =>
+      allowed.has(employee.id),
+    );
     const total = items.length;
     const paged = items
       .slice((page - 1) * pageSize, page * pageSize)
@@ -758,10 +971,13 @@ export const handlers = [
   http.get(`${BASE}/employees/:id`, ({ params, request }) => {
     const db = loadDb();
     const viewer = authUser(request, db);
+    if (!viewer) return unauthorized('Сессия истекла');
     const employee = db.employees.find((item) => item.id === params.id);
-    return employee
-      ? HttpResponse.json(redactSalary(employee, viewer))
-      : notFound('Сотрудник не найден');
+    if (!employee) return notFound('Сотрудник не найден');
+    if (!canReadEmployee(db, viewer, employee.id)) {
+      return forbidden('Нет доступа к карточке сотрудника');
+    }
+    return HttpResponse.json(redactSalary(employee, viewer));
   }),
 
   http.post(`${BASE}/employees`, async ({ request }) => {
@@ -778,12 +994,33 @@ export const handlers = [
     if (body.status === 'dismissed' && !can(user.role, 'employees:dismiss')) {
       return forbidden('Создавать уволенных сотрудников может только администратор');
     }
+    if (!body.email?.trim()) return badRequest('Укажите email сотрудника');
+    if (
+      db.employees.some(
+        (employee) => employee.email.toLowerCase() === body.email.trim().toLowerCase(),
+      )
+    ) {
+      return badRequest('Сотрудник с таким email уже существует');
+    }
+    if (body.managerId) {
+      const manager = db.employees.find((item) => item.id === body.managerId);
+      if (!manager) return badRequest('Руководитель не найден');
+      if (manager.status === 'dismissed') return badRequest('Руководитель уволен');
+    }
     const positionProblem = checkPositionForDepartment(
       db,
       body.departmentId,
       body.positionId,
     );
     if (positionProblem) return badRequest(positionProblem);
+    const position = db.positions.find((item) => item.id === body.positionId);
+    if (
+      position &&
+      body.salary > 0 &&
+      (body.salary < position.salaryMin || body.salary > position.salaryMax)
+    ) {
+      return badRequest('Оклад выходит за вилку должности');
+    }
     const employee: Employee = {
       ...pickFields(body, employeeFields),
       salary: can(user.role, 'salary:write') ? (body.salary ?? 0) : 0,
@@ -819,44 +1056,36 @@ export const handlers = [
     const body = (await request.json()) as Partial<EmployeePayload>;
     const employee = db.employees.find((item) => item.id === params.id);
     if (!employee) return notFound('Сотрудник не найден');
-    if (
-      body.status !== undefined &&
-      !EMPLOYEE_STATUSES.includes(body.status)
-    ) {
+    if (body.status !== undefined && !EMPLOYEE_STATUSES.includes(body.status)) {
       return badRequest('Некорректный статус сотрудника');
     }
-    const dismissalChange =
-      (body.status === 'dismissed' && employee.status !== 'dismissed') ||
-      (employee.status === 'dismissed' && body.status !== undefined && body.status !== 'dismissed');
-    if (dismissalChange && !can(actor.role, 'employees:dismiss')) {
-      return forbidden('Увольнение и восстановление доступны администратору');
-    }
-    if (body.status === 'dismissed' && employee.status !== 'dismissed') {
-      const blocker = dismissalBlocker(db, employee.id);
-      if (blocker) return badRequest(blocker);
-    }
     if (
-      body.salary !== undefined &&
-      !can(actor.role, 'salary:write') &&
-      body.salary !== employee.salary
+      body.email !== undefined &&
+      db.employees.some(
+        (item) =>
+          item.id !== employee.id &&
+          item.email.toLowerCase() === body.email!.trim().toLowerCase(),
+      )
     ) {
-      return forbidden('Оклад устанавливает администратор');
+      return badRequest('Сотрудник с таким email уже существует');
     }
-    if (body.departmentId !== undefined || body.positionId !== undefined) {
-      const positionProblem = checkPositionForDepartment(
-        db,
-        body.departmentId ?? employee.departmentId,
-        body.positionId ?? employee.positionId,
+    const orgFields = [
+      'departmentId',
+      'positionId',
+      'managerId',
+      'hireDate',
+      'status',
+      'salary',
+    ] as const;
+    if (orgFields.some((field) => body[field] !== undefined && body[field] !== employee[field])) {
+      return badRequest(
+        'Подразделение, должность, руководитель, оклад и статус меняются кадровым событием',
       );
-      if (positionProblem) return badRequest(positionProblem);
     }
-    const wasDismissed = employee.status === 'dismissed';
-    Object.assign(employee, pickFields(body, employeeFields));
-    if (!wasDismissed && employee.status === 'dismissed') {
-      archiveEmployee(db, employee, todayISO(), actor);
-    } else if (wasDismissed && employee.status !== 'dismissed') {
-      restoreEmployee(db, employee, actor);
+    if (body.email !== undefined && !body.email.trim()) {
+      return badRequest('Email не может быть пустым');
     }
+    Object.assign(employee, pickFields(body, personalEmployeeFields));
     pushAudit(db, actor, 'Изменена карточка сотрудника', 'employee', employee.id, fullName(employee));
     saveDb(db);
     return HttpResponse.json(employee);
@@ -871,6 +1100,9 @@ export const handlers = [
     }
     const employee = db.employees.find((item) => item.id === params.id);
     if (!employee) return notFound('Сотрудник не найден');
+    if (actor.employeeId === employee.id) {
+      return badRequest('Нельзя удалить собственную карточку сотрудника');
+    }
     db.employees = db.employees
       .filter((item) => item.id !== employee.id)
       .map((item) => (item.managerId === employee.id ? { ...item, managerId: null } : item));
@@ -905,8 +1137,10 @@ export const handlers = [
     return HttpResponse.json({ ok: true });
   }),
 
-  http.get(`${BASE}/departments`, () => {
+  http.get(`${BASE}/departments`, ({ request }) => {
     const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
     return HttpResponse.json(db.departments);
   }),
 
@@ -953,6 +1187,9 @@ export const handlers = [
     if (db.employees.some((employee) => employee.departmentId === department.id)) {
       return badRequest('В подразделении есть сотрудники');
     }
+    if (db.positions.some((position) => position.departmentId === department.id)) {
+      return badRequest('В подразделении есть должности');
+    }
     if (db.departments.some((item) => item.parentId === department.id)) {
       return badRequest('Есть дочерние подразделения');
     }
@@ -962,9 +1199,16 @@ export const handlers = [
     return HttpResponse.json({ ok: true });
   }),
 
-  http.get(`${BASE}/positions`, () => {
+  http.get(`${BASE}/positions`, ({ request }) => {
     const db = loadDb();
-    return HttpResponse.json(db.positions);
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
+    if (user.role === 'admin' || user.role === 'hr') {
+      return HttpResponse.json(db.positions);
+    }
+    return HttpResponse.json(
+      db.positions.map(({ salaryMin: _salaryMin, salaryMax: _salaryMax, ...position }) => position),
+    );
   }),
 
   http.post(`${BASE}/positions`, async ({ request }) => {
@@ -1003,6 +1247,19 @@ export const handlers = [
     const body = (await request.json()) as Partial<PositionPayload>;
     const position = db.positions.find((item) => item.id === params.id);
     if (!position) return notFound();
+    if (
+      user.role !== 'admin' &&
+      (body.salaryMin !== undefined || body.salaryMax !== undefined)
+    ) {
+      return forbidden('Вилку оклада изменяет администратор');
+    }
+    const nextDepartmentId = body.departmentId ?? position.departmentId;
+    if (
+      nextDepartmentId !== position.departmentId &&
+      db.employees.some((employee) => employee.positionId === position.id)
+    ) {
+      return badRequest('Должность занята сотрудниками — сначала оформите перевод');
+    }
     const salaryMin = body.salaryMin ?? position.salaryMin;
     const salaryMax = body.salaryMax ?? position.salaryMax;
     if (salaryMin > salaryMax) {
@@ -1041,15 +1298,33 @@ export const handlers = [
     return HttpResponse.json({ ok: true });
   }),
 
-  http.get(`${BASE}/projects`, () => {
+  http.get(`${BASE}/projects`, ({ request }) => {
     const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
+    if (user.role === 'employee') {
+      const allowedProjectIds = new Set(
+        db.assignments
+          .filter((assignment) => assignment.employeeId === user.employeeId)
+          .map((assignment) => assignment.projectId),
+      );
+      return HttpResponse.json(
+        db.projects.filter((project) => allowedProjectIds.has(project.id)),
+      );
+    }
     return HttpResponse.json(db.projects);
   }),
 
-  http.get(`${BASE}/projects/:id`, ({ params }) => {
+  http.get(`${BASE}/projects/:id`, ({ params, request }) => {
     const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
     const project = db.projects.find((item) => item.id === params.id);
-    return project ? HttpResponse.json(project) : notFound('Проект не найден');
+    if (!project) return notFound('Проект не найден');
+    if (!canReadProject(db, user, project.id)) {
+      return forbidden('Нет доступа к проекту');
+    }
+    return HttpResponse.json(project);
   }),
 
   http.post(`${BASE}/projects`, async ({ request }) => {
@@ -1140,6 +1415,14 @@ export const handlers = [
     const managerChanged =
       body.managerId !== undefined && body.managerId !== project.managerId;
     Object.assign(project, pickFields(body, projectFields));
+    if (managerChanged && project.managerId) {
+      notifyEmployee(db, project.managerId, {
+        type: 'project_transfer',
+        title: 'Вы назначены руководителем проекта',
+        body: `${project.code} · ${project.name}`,
+        link: `/projects/${project.id}`,
+      });
+    }
     pushAudit(
       db,
       user,
@@ -1171,10 +1454,13 @@ export const handlers = [
 
   http.get(`${BASE}/assignments`, ({ request }) => {
     const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
     const url = new URL(request.url);
     const employeeId = str(url, 'employeeId');
     const projectId = str(url, 'projectId');
-    let items = db.assignments;
+    const allowed = dataScopeEmployeeIds(db, user);
+    let items = db.assignments.filter((item) => allowed.has(item.employeeId));
     if (employeeId) items = items.filter((item) => item.employeeId === employeeId);
     if (projectId) items = items.filter((item) => item.projectId === projectId);
     return HttpResponse.json(items);
@@ -1366,6 +1652,18 @@ export const handlers = [
       items = actor.employeeId
         ? items.filter((item) => item.employeeId === actor.employeeId)
         : [];
+    } else if (actor.role === 'manager') {
+      const managedProjects = new Set(
+        db.projects
+          .filter((project) => project.managerId === actor.employeeId)
+          .map((project) => project.id),
+      );
+      items = items.filter((item) => managedProjects.has(item.projectId));
+      if (mine && actor.employeeId) {
+        items = items.filter((item) => item.employeeId === actor.employeeId);
+      } else if (employeeId) {
+        items = items.filter((item) => item.employeeId === employeeId);
+      }
     } else if (mine && actor.employeeId) {
       items = items.filter((item) => item.employeeId === actor.employeeId);
     } else if (employeeId) {
@@ -1440,6 +1738,12 @@ export const handlers = [
     };
 
     db.projectTasks.push(task);
+    notifyEmployee(db, employee.id, {
+      type: 'task_assigned',
+      title: 'Новая задача',
+      body: `${task.title} · срок ${formatDate(task.dueDate)}`,
+      link: '/tasks',
+    });
     pushAudit(
       db,
       actor,
@@ -1506,6 +1810,12 @@ export const handlers = [
         return badRequest('Сотрудник не назначен на проект');
       }
       task.employeeId = target.id;
+      notifyEmployee(db, target.id, {
+        type: 'task_assigned',
+        title: 'Вам назначена задача',
+        body: `${task.title} · срок ${formatDate(task.dueDate)}`,
+        link: '/tasks',
+      });
       auditAction = 'Задача переназначена';
       auditDetails = `${task.title} · ${fullName(target)}`;
     }
@@ -1585,6 +1895,14 @@ export const handlers = [
     }
 
     const employee = db.employees.find((item) => item.id === task.employeeId);
+    if (body.status === 'done' && taskProject?.managerId) {
+      notifyEmployee(db, taskProject.managerId, {
+        type: 'task_completed',
+        title: 'Задача выполнена',
+        body: `${fullName(employee)} · ${task.title}`,
+        link: `/projects/${task.projectId}`,
+      });
+    }
     pushAudit(
       db,
       actor,
@@ -1623,14 +1941,20 @@ export const handlers = [
 
   http.get(`${BASE}/timesheet`, ({ request }) => {
     const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
     const url = new URL(request.url);
     const month = str(url, 'month') ?? monthKey();
     const departmentId = str(url, 'departmentId');
     const employeeId = str(url, 'employeeId');
-    let employees = db.employees;
+    const allowed = dataScopeEmployeeIds(db, user);
+    let employees = db.employees.filter((item) => allowed.has(item.id));
     let includeDismissed = false;
     if (departmentId) employees = employees.filter((item) => item.departmentId === departmentId);
     if (employeeId) {
+      if (!canReadTimesheet(db, user, employeeId)) {
+        return forbidden('Нет доступа к табелю сотрудника');
+      }
       employees = employees.filter((item) => item.id === employeeId);
       // История уволенного сотрудника должна оставаться доступной в его карточке.
       includeDismissed = true;
@@ -1731,14 +2055,102 @@ export const handlers = [
     return HttpResponse.json({ ok: true });
   }),
 
+  http.get(`${BASE}/vacations/balance`, ({ request }) => {
+    const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
+    const url = new URL(request.url);
+    const year = Number(str(url, 'year') ?? new Date().getFullYear());
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return badRequest('Некорректный год');
+    }
+    const employeeId = str(url, 'employeeId');
+    const allowed = dataScopeEmployeeIds(db, user);
+    const employeeIds = employeeId
+      ? canReadEmployee(db, user, employeeId)
+        ? [employeeId]
+        : null
+      : db.employees
+          .filter((employee) => allowed.has(employee.id) && employee.status !== 'dismissed')
+          .map((employee) => employee.id);
+    if (employeeIds === null) return forbidden('Нет доступа к остаткам отпуска сотрудника');
+    return HttpResponse.json(
+      employeeIds.map((id) => vacationBalanceView(db, id, year)),
+    );
+  }),
+
+  http.patch(`${BASE}/vacations/balance/:employeeId`, async ({ params, request }) => {
+    const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
+    if (user.role !== 'admin' && user.role !== 'hr') {
+      return forbidden('Остатки отпусков меняют HR или администратор');
+    }
+    const employee = db.employees.find((item) => item.id === params.employeeId);
+    if (!employee) return notFound('Сотрудник не найден');
+    const body = (await request.json()) as {
+      year?: number;
+      entitlement?: number;
+      carryover?: number;
+    };
+    const year = body.year ?? new Date().getFullYear();
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return badRequest('Некорректный год');
+    }
+    const entitlement = body.entitlement ?? 28;
+    const carryover = body.carryover ?? 0;
+    if (!Number.isFinite(entitlement) || entitlement < 0 || entitlement > 365) {
+      return badRequest('Положенные дни должны быть от 0 до 365');
+    }
+    if (!Number.isFinite(carryover) || carryover < 0 || carryover > 365) {
+      return badRequest('Перенос должен быть от 0 до 365');
+    }
+    let balance = db.vacationBalances.find(
+      (item) => item.employeeId === employee.id && item.year === year,
+    );
+    if (!balance) {
+      balance = {
+        id: nextId('vb', db.vacationBalances),
+        employeeId: employee.id,
+        year,
+        entitlement,
+        carryover,
+        updatedAt: new Date().toISOString(),
+      };
+      db.vacationBalances.push(balance);
+    } else {
+      balance.entitlement = entitlement;
+      balance.carryover = carryover;
+      balance.updatedAt = new Date().toISOString();
+    }
+    pushAudit(
+      db,
+      user,
+      'Изменён остаток отпуска',
+      'vacation',
+      `${employee.id}|${year}`,
+      `${fullName(employee)} · положено ${entitlement} · перенос ${carryover}`,
+    );
+    saveDb(db);
+    return HttpResponse.json(vacationBalanceView(db, employee.id, year));
+  }),
+
   http.get(`${BASE}/absences`, ({ request }) => {
     const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
     const url = new URL(request.url);
     const employeeId = str(url, 'employeeId');
     const status = str(url, 'status');
     const month = str(url, 'month');
-    let items = [...db.absences];
-    if (employeeId) items = items.filter((item) => item.employeeId === employeeId);
+    const allowed = dataScopeEmployeeIds(db, user);
+    let items = db.absences.filter((item) => allowed.has(item.employeeId));
+    if (employeeId) {
+      if (!canReadAbsence(db, user, employeeId)) {
+        return forbidden('Нет доступа к отсутствиям сотрудника');
+      }
+      items = items.filter((item) => item.employeeId === employeeId);
+    }
     if (status) items = items.filter((item) => item.status === status);
     if (month) {
       items = items.filter(
@@ -1838,6 +2250,14 @@ export const handlers = [
       );
     }
     const breakdown = absenceDayBreakdown(body.type, body.startDate, body.endDate);
+    const vacationProblem = vacationLimitError(
+      db,
+      body.employeeId,
+      body.type,
+      body.startDate,
+      body.endDate,
+    );
+    if (vacationProblem) return badRequest(vacationProblem);
     const absence: Absence = {
       ...pickFields(body, absenceFields),
       id: nextId('ab', db.absences),
@@ -1847,6 +2267,25 @@ export const handlers = [
       approvedBy: null,
     };
     db.absences.push(absence);
+    const requestTitle = `${absenceTypeMeta[absence.type].label}: ${formatDate(absence.startDate)} — ${formatDate(absence.endDate)}`;
+    notifyHrAndAdmin(
+      db,
+      {
+        type: 'absence_request',
+        title: 'Новая заявка на согласование',
+        body: `${fullName(employee)} · ${requestTitle}`,
+        link: '/absences?status=pending&scope=all',
+      },
+      user.id,
+    );
+    if (employee.managerId) {
+      notifyEmployee(db, employee.managerId, {
+        type: 'absence_request',
+        title: 'Заявка сотрудника на согласование',
+        body: `${fullName(employee)} · ${requestTitle}`,
+        link: '/absences?status=pending&scope=all',
+      });
+    }
     pushAudit(db, user, 'Создана заявка на отсутствие', 'absence', absence.id, absenceTypeMeta[absence.type].label);
     saveDb(db);
     return HttpResponse.json(absence, { status: 201 });
@@ -1868,6 +2307,9 @@ export const handlers = [
     if (!absence) return notFound('Заявка не найдена');
     if (!canApproveAbsenceFor(db, user, absence)) {
       return forbidden('Нельзя согласовывать заявку вне своей зоны ответственности');
+    }
+    if (absence.type === 'sick' && body.status !== 'approved') {
+      return badRequest('Больничный можно только подтвердить');
     }
     if (body.status === 'approved') {
       if (user.employeeId === absence.employeeId && user.role !== 'admin') {
@@ -1978,6 +2420,13 @@ export const handlers = [
     }
     absence.status = body.status;
     absence.approvedBy = body.status === 'approved' ? (user.employeeId ?? null) : null;
+    if (absence.type === 'sick' && body.status === 'approved') {
+      absence.confirmedAt = new Date().toISOString();
+      absence.confirmedBy = user.employeeId ?? null;
+    } else {
+      absence.confirmedAt = null;
+      absence.confirmedBy = null;
+    }
     if (body.status === 'approved') clearAbsenceOverrides(db, absence);
     syncEmployeeStatus(db, absence.employeeId);
     syncAbsenceEvent(db, absence, user);
@@ -1995,6 +2444,17 @@ export const handlers = [
       absence.id,
       absenceTypeMeta[absence.type].label,
     );
+    notifyEmployee(db, absence.employeeId, {
+      type: 'absence_decision',
+      title:
+        body.status === 'approved'
+          ? 'Заявка согласована'
+          : body.status === 'rejected'
+            ? 'Заявка отклонена'
+            : 'Заявка возвращена на согласование',
+      body: `${absenceTypeMeta[absence.type].label}: ${formatDate(absence.startDate)} — ${formatDate(absence.endDate)}`,
+      link: '/absences',
+    });
     saveDb(db);
     return HttpResponse.json(absence);
   }),
@@ -2038,6 +2498,16 @@ export const handlers = [
         `Период пересекается с существующей заявкой ${overlap.startDate} — ${overlap.endDate}`,
       );
     }
+    const nextType = body.type ?? absence.type;
+    const vacationProblem = vacationLimitError(
+      db,
+      absence.employeeId,
+      nextType,
+      startDate,
+      endDate,
+      absence.id,
+    );
+    if (vacationProblem) return badRequest(vacationProblem);
     Object.assign(absence, pickFields(body, absenceUpdateFields));
     Object.assign(
       absence,
@@ -2095,15 +2565,26 @@ export const handlers = [
 
   http.get(`${BASE}/events`, ({ request }) => {
     const db = loadDb();
+    const user = authUser(request, db);
+    if (!user) return unauthorized('Сессия истекла');
     const url = new URL(request.url);
     const employeeId = str(url, 'employeeId');
     const month = str(url, 'month');
     const type = str(url, 'type');
-    let items = [...db.events];
-    if (employeeId) items = items.filter((item) => item.employeeId === employeeId);
+    const allowed = dataScopeEmployeeIds(db, user);
+    let items = db.events.filter((event) => allowed.has(event.employeeId));
+    if (employeeId) {
+      if (!canReadEmployee(db, user, employeeId)) {
+        return forbidden('Нет доступа к событиям сотрудника');
+      }
+      items = items.filter((item) => item.employeeId === employeeId);
+    }
     if (month) items = items.filter((item) => String(item.date ?? '').startsWith(month));
     if (type) items = items.filter((item) => item.type === type);
     items.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+    if (user.role !== 'admin' && user.role !== 'hr') {
+      items = items.map(({ oldSalary: _oldSalary, newSalary: _newSalary, ...event }) => event);
+    }
     return HttpResponse.json(items);
   }),
 
@@ -2177,6 +2658,19 @@ export const handlers = [
     }
     if (eventSalary !== null && (!Number.isFinite(eventSalary) || eventSalary < 0)) {
       return badRequest('Некорректный размер оклада');
+    }
+    const salaryPosition =
+      promotionPosition ??
+      (body.type === 'salary_change' ? currentPosition : null) ??
+      (body.toPositionId
+        ? db.positions.find((item) => item.id === body.toPositionId) ?? null
+        : null);
+    if (
+      eventSalary !== null &&
+      salaryPosition &&
+      (eventSalary < salaryPosition.salaryMin || eventSalary > salaryPosition.salaryMax)
+    ) {
+      return badRequest('Оклад выходит за вилку должности');
     }
     if (body.type === 'transfer') {
       const targetDepartmentId = body.toDepartmentId ?? employee.departmentId;
@@ -2333,6 +2827,16 @@ export const handlers = [
     }
     if (user.id === actor.id && body.isActive === false) {
       return badRequest('Нельзя заблокировать собственную учётную запись');
+    }
+    const activeAdmins = db.users.filter(
+      (item) => item.role === 'admin' && item.isActive,
+    ).length;
+    const losesAdmin =
+      user.role === 'admin' &&
+      user.isActive &&
+      ((body.role !== undefined && body.role !== 'admin') || body.isActive === false);
+    if (losesAdmin && activeAdmins <= 1) {
+      return badRequest('В системе должен остаться хотя бы один активный администратор');
     }
     Object.assign(user, pickFields(body, ['role', 'isActive'] as const));
     pushAudit(db, actor, 'Изменён пользователь', 'user', user.id, user.email);

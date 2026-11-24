@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
-  Bell,
   ChevronDown,
   KeyRound,
   LogOut,
@@ -21,6 +20,7 @@ import { getErrorMessage } from '@/shared/api/client';
 import { Button } from '@/shared/ui/button';
 import { Avatar } from '@/shared/ui/primitives';
 import { useToast } from '@/shared/ui/toast';
+import { NotificationBell } from '@/features/notifications/notification-bell';
 
 export function Topbar({
   onOpenMenu,
@@ -106,17 +106,7 @@ export function Topbar({
         >
           {theme === 'light' ? <Moon /> : <Sun />}
         </Button>
-        {user && user.role !== 'employee' ? (
-          <Link
-            to="/events"
-            className="relative inline-flex size-9 items-center justify-center rounded-lg text-fg transition hover:bg-surface-2"
-            title="Кадровые события"
-            aria-label="Кадровые события"
-          >
-            <Bell className="size-4" />
-            <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-danger" />
-          </Link>
-        ) : null}
+        {user ? <NotificationBell /> : null}
 
         <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
 

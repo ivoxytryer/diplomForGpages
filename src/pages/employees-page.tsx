@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Pencil, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
 import { api } from '@/shared/api';
@@ -23,12 +23,18 @@ export function EmployeesPage() {
   const user = useAuthStore((state) => state.user);
   const managerDepartmentId = useManagerDepartmentId();
   const { departments, positions, projects, departmentById, positionById } = useLookups();
+  const [searchParams] = useSearchParams();
+  const statusParam = searchParams.get('status');
+  const initialStatus =
+    statusParam && statusParam in employeeStatusMeta
+      ? (statusParam as EmployeeStatus)
+      : '';
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounced(search, 300);
   const [departmentId, setDepartmentId] = useState('');
   const [positionId, setPositionId] = useState('');
-  const [status, setStatus] = useState<EmployeeStatus | ''>('');
+  const [status, setStatus] = useState<EmployeeStatus | ''>(initialStatus);
   const [projectId, setProjectId] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);

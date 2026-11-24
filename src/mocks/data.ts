@@ -9,11 +9,13 @@ import type {
   Employee,
   EmployeeStatus,
   HrEvent,
+  Notification,
   Position,
   Project,
   ProjectTask,
   TimesheetStatus,
   User,
+  VacationBalance,
 } from '@/shared/types';
 import { formatDate } from '@/shared/lib/utils';
 import { absenceDayBreakdown } from '@/shared/lib/absences';
@@ -677,6 +679,12 @@ function seedAbsences(): Absence[] {
       reason: item.reason,
       createdAt: D(item.start.subtract(10, 'day')),
       approvedBy: item.status === 'approved' ? 'e002' : null,
+      confirmedAt:
+        item.type === 'sick' && item.status === 'approved'
+          ? D(item.start)
+          : null,
+      confirmedBy:
+        item.type === 'sick' && item.status === 'approved' ? 'e002' : null,
     };
   });
 }
@@ -817,6 +825,55 @@ function seedUsers(): User[] {
   ];
 }
 
+function seedVacationBalances(employees: Employee[]): VacationBalance[] {
+  const year = now.year();
+  return employees
+    .filter((employee) => employee.status !== 'dismissed')
+    .map((employee, index) => ({
+      id: `vb${String(index + 1).padStart(3, '0')}`,
+      employeeId: employee.id,
+      year,
+      entitlement: 28,
+      carryover: employee.id === 'e004' ? 3 : 0,
+      updatedAt: now.startOf('year').toISOString(),
+    }));
+}
+
+function seedNotifications(): Notification[] {
+  return [
+    {
+      id: 'n001',
+      userId: 'u2',
+      type: 'absence_request',
+      title: 'Новая заявка на согласование',
+      body: 'Фёдорова Екатерина — отпуск 24.11–28.11',
+      link: '/absences?status=pending&scope=all',
+      createdAt: now.subtract(35, 'minute').toISOString(),
+      readAt: null,
+    },
+    {
+      id: 'n002',
+      userId: 'u1',
+      type: 'absence_request',
+      title: 'Заявка ждёт согласования',
+      body: 'Фёдорова Екатерина — отпуск 24.11–28.11',
+      link: '/absences?status=pending&scope=all',
+      createdAt: now.subtract(35, 'minute').toISOString(),
+      readAt: null,
+    },
+    {
+      id: 'n003',
+      userId: 'u3',
+      type: 'task_completed',
+      title: 'Задача выполнена',
+      body: 'Анна Попова закрыла «Обновить документацию API»',
+      link: '/tasks',
+      createdAt: now.subtract(1, 'day').toISOString(),
+      readAt: null,
+    },
+  ];
+}
+
 function seedAudit(): AuditEntry[] {
   return [
     {
@@ -890,9 +947,10 @@ export function createSeed(): Db {
     projectTasks: seedProjectTasks(),
     absences,
     absenceTaskDecisions: seedAbsenceTaskDecisions(),
+    vacationBalances: seedVacationBalances(employees),
     events: seedEvents(employees, absences),
     users,
-    payslips: [],
+    notifications: seedNotifications(),
     audit: seedAudit(),
     timesheetOverrides: {},
     timesheetStatuses,
