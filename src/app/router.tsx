@@ -67,7 +67,7 @@ const NotFoundPage = lazy(() =>
 const staff: Role[] = ['admin', 'hr', 'manager'];
 const everyone: Role[] = ['admin', 'hr', 'manager', 'employee'];
 
-const routes = [
+export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },
   {
     element: <RequireAuth />,
@@ -208,8 +208,4 @@ const routes = [
       },
     ],
   },
-];
-
-// На GitHub Pages приложение живёт по /<repo>/, поэтому basename берём из base.
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
-export const router = createBrowserRouter(routes, { basename: baseUrl || '/' });
+]);

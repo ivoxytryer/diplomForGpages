@@ -17,6 +17,8 @@ export interface Employee {
   departmentId: string;
   positionId: string;
   managerId?: string | null;
+  /** ФИО руководителя, рассчитанное сервером (нужно сотруднику для своей карточки). */
+  managerName?: string | null;
   hireDate: string;
   dismissalDate?: string | null;
   status: EmployeeStatus;
@@ -56,6 +58,11 @@ export interface Project {
   startDate: string;
   endDate?: string | null;
   managerId?: string | null;
+  /**
+   * ФИО руководителя, рассчитанное сервером. Нужно для каталога проектов:
+   * manager видит чужой проект, но не имеет доступа к карточке его руководителя.
+   */
+  managerName?: string | null;
   color: string;
 }
 
@@ -79,9 +86,9 @@ interface TaskCarryEntry {
   at: string;
 }
 
-export type TaskCompletionAction = 'done' | 'reopen';
+type TaskCompletionAction = 'done' | 'reopen';
 
-export interface TaskCompletionEntry {
+interface TaskCompletionEntry {
   action: TaskCompletionAction;
   comment: string;
   at: string;
@@ -230,7 +237,7 @@ export interface HrEvent {
   absenceId?: string | null;
 }
 
-export type NotificationType =
+type NotificationType =
   | 'absence_request'
   | 'absence_decision'
   | 'task_assigned'

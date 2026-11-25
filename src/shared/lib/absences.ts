@@ -1,5 +1,7 @@
 import dayjs from 'dayjs';
 import type { Absence, AbsenceType } from '@/shared/types';
+import { absenceTypeMeta } from './meta';
+import { formatDate } from './utils';
 import { calendarDaysBetween, holidayDaysBetween, workingDaysBetween } from './calendar';
 
 /** Пересечение периодов включительно: 10–12 и 12–14 пересекаются. */
@@ -26,27 +28,46 @@ export function absenceDayBreakdown(type: AbsenceType, startDate: string, endDat
 }
 
 /**
- * Ближайшее согласованное отсутствие сотрудника на дату:
- * сначала текущее, иначе ближайшее будущее в пределах 30 дней.
+ * Текущее или ближайшее будущее отсутствие сотрудника.
+ * Сначала показываем текущее; если его нет — ближайшее в пределах 30 дней.
+ * Заявки на согласовании тоже учитываются, но с пометкой в интерфейсе.
  */
 export function findEmployeeAbsenceNote(
   absences: Absence[],
   employeeId: string,
   today: string,
-): { absence: Absence; active: boolean } | null {
-  const approved = absences.filter(
-    (absence) => absence.employeeId === employeeId && absence.status === 'approved',
+): { absence: Absence; active: boolean; status: Absence['status'] } | null {
+  const relevant = absences.filter(
+    (absence) => absence.employeeId === employeeId && absence.status !== 'rejected',
   );
-  const current = approved
+  const current = relevant
     .filter((absence) => absence.startDate <= today && absence.endDate >= today)
     .sort((a, b) => b.endDate.localeCompare(a.endDate))[0];
-  if (current) return { absence: current, active: true };
+  if (current) return { absence: current, active: true, status: current.status };
 
   const horizon = dayjs(today).add(30, 'day').format('YYYY-MM-DD');
-  const upcoming = approved
+  const upcoming = relevant
     .filter((absence) => absence.startDate > today && absence.startDate <= horizon)
     .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
-  return upcoming ? { absence: upcoming, active: false } : null;
+  return upcoming
+    ? { absence: upcoming, active: false, status: upcoming.status }
+    : null;
+}
+
+/** Единый формат отсутствия для таблиц и карточек. */
+export function formatAbsenceNote(note: {
+  absence: Absence;
+  active: boolean;
+  status: Absence['status'];
+}) {
+  const { absence, active, status } = note;
+  const range =
+    absence.startDate === absence.endDate
+      ? formatDate(absence.startDate)
+      : `${formatDate(absence.startDate)} — ${formatDate(absence.endDate)}`;
+  return `${absenceTypeMeta[absence.type].label} (${active ? 'сейчас' : 'план'}): ${range}${
+    status === 'pending' ? ' · на согласовании' : ''
+  }`;
 }
 
 /**

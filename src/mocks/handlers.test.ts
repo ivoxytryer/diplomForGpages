@@ -293,6 +293,34 @@ describe('права на запись', () => {
     expect(task.status).toBe(201);
   });
 
+  it('руководитель видит каталог проектов, но не команду чужого проекта', async () => {
+    const manager = await login('manager@hr.local');
+
+    const projects = asArray((await call('GET', '/projects', undefined, manager.token)).data);
+    expect(projects.length).toBeGreaterThan(3);
+    expect(projects.some((project) => project.id === 'pr5')).toBe(true);
+
+    // Карточку чужого проекта можно открыть для просмотра, ФИО руководителя видно.
+    const foreignProject = asItem(
+      (await call('GET', '/projects/pr5', undefined, manager.token)).data,
+    );
+    expect(foreignProject.managerId).toBe('e006');
+    expect(typeof foreignProject.managerName).toBe('string');
+    expect((foreignProject.managerName as string).length).toBeGreaterThan(0);
+
+    // Команда чужого проекта скрыта.
+    const foreignTeam = asArray(
+      (await call('GET', '/assignments?projectId=pr5', undefined, manager.token)).data,
+    );
+    expect(foreignTeam).toHaveLength(0);
+
+    // Команда своего проекта доступна.
+    const ownTeam = asArray(
+      (await call('GET', '/assignments?projectId=pr1', undefined, manager.token)).data,
+    );
+    expect(ownTeam.length).toBeGreaterThan(1);
+  });
+
   it('руководитель передаёт свой проект и теряет к нему доступ', async () => {
     const manager = await login('manager@hr.local');
     const admin = await login('admin@hr.local');
@@ -319,9 +347,9 @@ describe('права на запись', () => {
     const employee = await login('employee@hr.local');
     const employeeList = (await call('GET', '/employees?pageSize=500', undefined, employee.token))
       .data as { items: Array<{ id: string }> };
-    expect(employeeList.items.map((item) => item.id)).toContain('e004');
-    expect(employeeList.items.map((item) => item.id)).not.toContain('e008');
+    expect(employeeList.items.map((item) => item.id)).toEqual(['e004']);
     expect((await call('GET', '/employees/e004', undefined, employee.token)).status).toBe(200);
+    expect((await call('GET', '/employees/e003', undefined, employee.token)).status).toBe(403);
     expect((await call('GET', '/employees/e008', undefined, employee.token)).status).toBe(403);
     expect(
       (await call('GET', `/timesheet?month=${monthKey()}&employeeId=e008`, undefined, employee.token))
@@ -1036,6 +1064,23 @@ describe('дашборд, аудит и сброс', () => {
     expect(Number(data.pendingAbsences)).toBeGreaterThan(0);
   });
 
+  it('не отдаёт дни рождения менеджеру', async () => {
+    const manager = await login('manager@hr.local');
+    const result = await call('GET', '/dashboard', undefined, manager.token);
+    expect(result.status).toBe(200);
+    expect(asArray(asItem(result.data).birthdays)).toHaveLength(0);
+  });
+
+  it('считает дашборд менеджера по той же области, что и список сотрудников', async () => {
+    const manager = await login('manager@hr.local');
+    const list = await call('GET', '/employees?pageSize=500', undefined, manager.token);
+    const employees = asArray(asItem(list.data).items) as Array<{ status: string }>;
+    const active = employees.filter((employee) => employee.status !== 'dismissed').length;
+
+    const dashboard = await call('GET', '/dashboard', undefined, manager.token);
+    expect(asItem(dashboard.data).headcount).toBe(active);
+  });
+
   it('журнал действий доступен только администратору', async () => {
     const admin = await login('admin@hr.local');
     const audit = await call('GET', '/audit', undefined, admin.token);
@@ -1212,6 +1257,117 @@ describe('валидация справочных значений', () => {
         )
       ).status,
     ).toBe(400);
+
+    expect(
+      (await call('PATCH', '/timesheet/e004/2026-02-30', { code: 'Я', hours: 8 }, admin.token))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await call(
+          'POST',
+          '/tasks',
+          {
+            projectId: 'pr1',
+            employeeId: 'e004',
+            title: 'Плохая оценка',
+            dueDate: today,
+            estimateHours: 'abc' as unknown as number,
+          },
+          admin.token,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(
+          'PATCH',
+          '/tasks/t001',
+          { estimateHours: -5 },
+          admin.token,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(
+          'POST',
+          '/events',
+          { employeeId: 'e004', type: 'hire', date: today, title: 'Повторный приём' },
+          admin.token,
+        )
+      ).status,
+    ).toBe(400);
+  });
+});
+
+describe('синхронизация данных сотрудника и учётной записи', () => {
+  it('меняет email учётной записи вместе с email карточки', async () => {
+    const admin = await login('admin@hr.local');
+    const created = await call(
+      'POST',
+      '/employees',
+      {
+        lastName: 'Синхронизация',
+        firstName: 'Тест',
+        birthDate: '1990-01-01',
+        gender: 'male',
+        email: 'sync.employee@hr.local',
+        phone: '+7 900 000-00-00',
+        departmentId: 'd5',
+        positionId: 'p5',
+        hireDate: '2026-01-01',
+        status: 'active',
+        employmentType: 'full',
+        salary: 150000,
+      },
+      admin.token,
+    );
+    expect(created.status).toBe(201);
+    const employee = asItem(created.data);
+
+    const account = await call(
+      'POST',
+      '/users',
+      {
+        email: 'sync.employee@hr.local',
+        name: 'Синхронизация Тест',
+        role: 'employee',
+        employeeId: employee.id,
+      },
+      admin.token,
+    );
+    expect(account.status).toBe(201);
+
+    const updated = await call(
+      'PATCH',
+      `/employees/${employee.id}`,
+      { email: 'sync.employee2@hr.local' },
+      admin.token,
+    );
+    expect(updated.status).toBe(200);
+
+    const user = asItem(
+      (
+        await call(
+          'GET',
+          `/users/by-employee/${employee.id}`,
+          undefined,
+          admin.token,
+        )
+      ).data,
+    );
+    expect(user.email).toBe('sync.employee2@hr.local');
+
+    expect((await call('DELETE', `/employees/${employee.id}`, undefined, admin.token)).status).toBe(
+      200,
+    );
+    const db = JSON.parse(localStorage.getItem('hr-system-db-v1') ?? '{}');
+    expect(
+      (db.vacationBalances ?? []).some(
+        (item: { employeeId: string }) => item.employeeId === employee.id,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -1273,6 +1429,46 @@ describe('уточнённые права HR', () => {
     expect(dismissed.status).toBe(201);
     const after = asArray((await call('GET', '/projects', undefined, admin.token)).data);
     expect(after.some((project) => project.managerId === 'e003')).toBe(false);
+  });
+
+  it('HR не оформляет повышение и перевод самому себе', async () => {
+    const hr = await login('hr@hr.local');
+    const promotion = {
+      employeeId: 'e002',
+      type: 'promotion',
+      date: todayISO(),
+      title: 'Повышение',
+      toPositionId: 'p16',
+    };
+    const transfer = {
+      employeeId: 'e002',
+      type: 'transfer',
+      date: todayISO(),
+      title: 'Перевод',
+      toDepartmentId: 'd3',
+      toPositionId: 'p3',
+    };
+
+    expect((await call('POST', '/events', promotion, hr.token)).status).toBe(403);
+    expect((await call('POST', '/events', transfer, hr.token)).status).toBe(403);
+
+    // Других сотрудников HR по-прежнему может повышать.
+    expect(
+      (
+        await call(
+          'POST',
+          '/events',
+          {
+            employeeId: 'e004',
+            type: 'promotion',
+            date: todayISO(),
+            title: 'Повышение',
+            toPositionId: 'p14',
+          },
+          hr.token,
+        )
+      ).status,
+    ).toBe(201);
   });
 
   it('HR не создаёт событие увольнения', async () => {

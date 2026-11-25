@@ -51,7 +51,8 @@ export function EventForm({
   lockEmployee?: boolean;
 }) {
   const { employees, departments, positions, employeeById, projects, projectById } = useLookups();
-  const role = useAuthStore((state) => state.user?.role);
+  const currentUser = useAuthStore((state) => state.user);
+  const role = currentUser?.role;
   const canEditSalary = can(role, 'salary:write');
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -254,7 +255,11 @@ export function EventForm({
           >
             <option value="">Выберите сотрудника</option>
             {employees
-              .filter((item) => item.status !== 'dismissed')
+              .filter(
+                (item) =>
+                  item.status !== 'dismissed' &&
+                  !(role === 'hr' && item.id === currentUser?.employeeId),
+              )
               .map((item) => (
                 <option key={item.id} value={item.id}>
                   {fullName(item)}

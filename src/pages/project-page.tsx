@@ -17,8 +17,8 @@ import type { ProjectTask } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { useLookups } from '@/shared/hooks/use-lookups';
 import { can } from '@/shared/lib/permissions';
-import { findEmployeeAbsenceNote } from '@/shared/lib/absences';
-import { absenceTypeMeta, projectStatusMeta } from '@/shared/lib/meta';
+import { findEmployeeAbsenceNote, formatAbsenceNote } from '@/shared/lib/absences';
+import { projectStatusMeta } from '@/shared/lib/meta';
 import { formatDate, fullName, todayISO } from '@/shared/lib/utils';
 import { isAssignmentActive } from '@/shared/lib/workload';
 import { AssignmentForm } from '@/features/projects/assignment-form';
@@ -104,7 +104,10 @@ export function ProjectPage() {
     can(user?.role, 'projects:manage-team') && (isAdminOrHr || isProjectManager);
   const canManageProjectTasks =
     can(user?.role, 'tasks:write') && (user?.role === 'admin' || isProjectManager);
-  const assignments = assignmentsQuery.data ?? [];
+  // Manager видит каталог всех проектов, но детали чужих проектов скрыты.
+  const isForeignManagerView = user?.role === 'manager' && !isProjectManager;
+  const canViewTeamDetails = !isForeignManagerView;
+  const assignments = canViewTeamDetails ? (assignmentsQuery.data ?? []) : [];
   const today = todayISO();
   const activeAssignments = assignments.filter((assignment) =>
     isAssignmentActive(assignment, project, today),
@@ -113,7 +116,7 @@ export function ProjectPage() {
   const teamSize = new Set(activeAssignments.map((assignment) => assignment.employeeId)).size;
   const avgAllocation = teamSize ? Math.round(totalAllocation / teamSize) : 0;
   const editingAssignment = assignments.find((assignment) => assignment.id === editingAssignmentId) ?? null;
-  const projectTasks = tasksQuery.data ?? [];
+  const projectTasks = canViewTeamDetails ? (tasksQuery.data ?? []) : [];
   const openTasks = projectTasks.filter((task) => task.status === 'todo').length;
 
   return (
@@ -138,12 +141,14 @@ export function ProjectPage() {
         description={project.description || 'Описание проекта не заполнено'}
         actions={
           <>
-            <Link
-              to={`/reports?report=projectTeams&project=${project.id}`}
-              className="inline-flex h-9 items-center gap-2 border border-border bg-surface px-3 text-xs font-medium text-fg transition-colors hover:border-fg"
-            >
-              <BarChart3 className="size-4" /> Отчёт по проекту
-            </Link>
+            {canViewTeamDetails ? (
+              <Link
+                to={`/reports?report=projectTeams&project=${project.id}`}
+                className="inline-flex h-9 items-center gap-2 border border-border bg-surface px-3 text-xs font-medium text-fg transition-colors hover:border-fg"
+              >
+                <BarChart3 className="size-4" /> Отчёт по проекту
+              </Link>
+            ) : null}
             {canManageTeam ? (
               <Button
                 variant="outline"
@@ -166,10 +171,36 @@ export function ProjectPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Статус" value={projectStatusMeta[project.status].label} icon={FolderKanban} tone="info" />
-        <StatCard label="Участников" value={teamSize} hint={`${assignments.length} назначений`} icon={Users} tone="success" />
-        <StatCard label="Суммарная загрузка" value={`${totalAllocation}%`} icon={Gauge} tone="purple" />
-        <StatCard label="Средняя загрузка" value={`${avgAllocation}%`} icon={Gauge} tone="warning" />
+        <StatCard
+          label="Участников"
+          value={canViewTeamDetails ? teamSize : '—'}
+          hint={
+            canViewTeamDetails
+              ? `${assignments.length} назначений`
+              : 'доступно руководителю проекта'
+          }
+          icon={Users}
+          tone="success"
+        />
+        <StatCard
+          label="Суммарная загрузка"
+          value={canViewTeamDetails ? `${totalAllocation}%` : '—'}
+          icon={Gauge}
+          tone="purple"
+        />
+        <StatCard
+          label="Средняя загрузка"
+          value={canViewTeamDetails ? `${avgAllocation}%` : '—'}
+          icon={Gauge}
+          tone="warning"
+        />
       </div>
+      {!canViewTeamDetails ? (
+        <div className="mt-3 border border-border bg-surface-2/50 px-4 py-3 text-xs text-muted">
+          Вы не являетесь руководителем этого проекта. Доступны только основные параметры;
+          команда и задачи доступны руководителю проекта.
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[320px_1fr]">
         <div className="space-y-4">
@@ -191,6 +222,11 @@ export function ProjectPage() {
                       </span>
                     </span>
                   </Link>
+                ) : project.managerName ? (
+                  <div className="mt-1">
+                    <p className="font-medium text-fg">{project.managerName}</p>
+                    <p className="text-[10px] text-muted">Карточка сотрудника недоступна</p>
+                  </div>
                 ) : (
                   <p className="mt-1 font-medium text-fg">Не назначен</p>
                 )}
@@ -210,38 +246,41 @@ export function ProjectPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader title="Загрузка команды" description="Распределение процентов" />
-            <CardContent className="space-y-2.5">
-              {assignments.length === 0 ? (
-                <p className="text-xs text-muted">Нет назначений.</p>
-              ) : (
-                assignments
-                  .slice()
-                  .sort((a, b) => b.allocation - a.allocation)
-                  .map((assignment) => {
-                    const employee = employeeById.get(assignment.employeeId);
-                    return (
-                      <div key={assignment.id}>
-                        <div className="flex items-center justify-between gap-2 text-[11px]">
-                          <span className="truncate text-fg">{fullName(employee)}</span>
-                          <span className="shrink-0 font-medium text-muted">
-                            {assignment.allocation}%
-                          </span>
+          {canViewTeamDetails ? (
+            <Card>
+              <CardHeader title="Загрузка команды" description="Распределение процентов" />
+              <CardContent className="space-y-2.5">
+                {assignments.length === 0 ? (
+                  <p className="text-xs text-muted">Нет назначений.</p>
+                ) : (
+                  assignments
+                    .slice()
+                    .sort((a, b) => b.allocation - a.allocation)
+                    .map((assignment) => {
+                      const employee = employeeById.get(assignment.employeeId);
+                      return (
+                        <div key={assignment.id}>
+                          <div className="flex items-center justify-between gap-2 text-[11px]">
+                            <span className="truncate text-fg">{fullName(employee)}</span>
+                            <span className="shrink-0 font-medium text-muted">
+                              {assignment.allocation}%
+                            </span>
+                          </div>
+                          <Progress
+                            className="mt-1"
+                            value={assignment.allocation}
+                            tone={assignment.allocation > 60 ? 'warning' : 'primary'}
+                          />
                         </div>
-                        <Progress
-                          className="mt-1"
-                          value={assignment.allocation}
-                          tone={assignment.allocation > 60 ? 'warning' : 'primary'}
-                        />
-                      </div>
-                    );
-                  })
-              )}
-            </CardContent>
-          </Card>
+                      );
+                    })
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
 
+        {canViewTeamDetails ? (
         <Card className="overflow-hidden">
           <CardHeader
             title="Команда проекта"
@@ -310,14 +349,8 @@ export function ProjectPage() {
                               {employee ? departmentById.get(employee.departmentId)?.name ?? '—' : '—'}
                             </span>
                             {absence ? (
-                              <span className="block truncate text-[10px] text-muted">
-                                {absenceTypeMeta[absence.absence.type].label}{' '}
-                                {absence.active ? 'до' : 'с'}{' '}
-                                {formatDate(
-                                  absence.active
-                                    ? absence.absence.endDate
-                                    : absence.absence.startDate,
-                                )}
+                              <span className="block text-[10px] text-muted">
+                                {formatAbsenceNote(absence)}
                               </span>
                             ) : null}
                           </span>
@@ -370,8 +403,19 @@ export function ProjectPage() {
             )}
           </div>
         </Card>
+        ) : (
+          <Card>
+            <CardHeader title="Команда проекта" description="Доступ ограничен" />
+            <EmptyState
+              title="Команда скрыта"
+              description="Состав команды доступен руководителю проекта и HR/администратору."
+              icon={Users}
+            />
+          </Card>
+        )}
       </div>
 
+      {canViewTeamDetails ? (
       <Card className="mt-4 overflow-hidden">
         <CardHeader
           title="Задачи проекта"
@@ -427,6 +471,15 @@ export function ProjectPage() {
           </div>
         ) : null}
       </Card>
+      ) : (
+        <Card className="mt-4">
+          <CardHeader title="Задачи проекта" description="Доступ ограничен" />
+          <EmptyState
+            title="Задачи скрыты"
+            description="Задачи доступны руководителю проекта и участникам команды."
+          />
+        </Card>
+      )}
 
       <ProjectForm open={editOpen} onClose={() => setEditOpen(false)} project={project} />
       <AssignmentForm

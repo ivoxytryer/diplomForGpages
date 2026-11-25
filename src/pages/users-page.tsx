@@ -289,7 +289,7 @@ export function UsersPage() {
         onClose={() => setResetOpen(false)}
         onConfirm={() => resetMutation.mutate()}
         title="Сбросить демо-данные?"
-        description="Все изменения (сотрудники, табель, заявки, проекты, расчёты) будут заменены исходным демонстрационным набором. Действие необратимо."
+        description="Все изменения (сотрудники, табель, заявки, проекты, задачи) будут заменены исходным демонстрационным набором. Действие необратимо."
         confirmLabel="Сбросить"
         loading={resetMutation.isPending}
       />

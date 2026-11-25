@@ -2,7 +2,6 @@ import dayjs, { type Dayjs } from 'dayjs';
 import 'dayjs/locale/ru';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { normDaysOfMonth as calendarNormDays, workingDaysBetween } from './calendar';
 
 dayjs.locale('ru');
 
@@ -25,6 +24,12 @@ export function employeeOptionLabel(name: string, departmentName?: string | null
 export function formatDateTime(value?: string | null) {
   if (!value) return '—';
   return dayjs(value).format('DD.MM.YYYY HH:mm');
+}
+
+/** Реальная дата в формате YYYY-MM-DD (30 февраля не проходит). */
+export function isValidDateString(value?: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  return dayjs(value).format('YYYY-MM-DD') === value;
 }
 
 export function formatMoney(value?: number | null) {
@@ -56,21 +61,6 @@ export function datesOfMonth(month: string) {
   const start = dayjs(`${month}-01`);
   const count = start.daysInMonth();
   return Array.from({ length: count }, (_, index) => start.add(index, 'day').format('YYYY-MM-DD'));
-}
-
-export function isWeekend(value: DateInput) {
-  const day = dayjs(value).day();
-  return day === 0 || day === 6;
-}
-
-/** Норма рабочих дней месяца с учётом производственного календаря. */
-export function normDaysOfMonth(month: string) {
-  return calendarNormDays(month);
-}
-
-/** Рабочие дни периода с учётом праздников и переносов. */
-export function businessDaysBetween(start: string, end: string) {
-  return workingDaysBetween(start, end);
 }
 
 export function getInitials(lastName: string, firstName: string, middleName?: string) {

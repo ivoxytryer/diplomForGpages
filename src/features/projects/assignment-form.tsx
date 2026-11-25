@@ -5,10 +5,9 @@ import { getErrorMessage } from '@/shared/api/client';
 import type { Assignment, AssignmentPayload } from '@/shared/types';
 import { useLookups } from '@/shared/hooks/use-lookups';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { findEmployeeAbsenceNote } from '@/shared/lib/absences';
-import { absenceTypeMeta } from '@/shared/lib/meta';
+import { findEmployeeAbsenceNote, formatAbsenceNote } from '@/shared/lib/absences';
 import { ADMIN_LOAD_LIMIT, calculateLoad, remainingCapacity } from '@/shared/lib/workload';
-import { cn, employeeOptionLabel, formatDate, fullName, todayISO } from '@/shared/lib/utils';
+import { cn, employeeOptionLabel, fullName, todayISO } from '@/shared/lib/utils';
 import { Dialog } from '@/shared/ui/overlay';
 import { Button } from '@/shared/ui/button';
 import { Field, Input, Select, Textarea } from '@/shared/ui/primitives';
@@ -104,11 +103,7 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
     findEmployeeAbsenceNote(absencesQuery.data ?? [], employeeId, today);
   const absenceLabel = (employeeId: string) => {
     const note = absenceFor(employeeId);
-    if (!note) return '';
-    const label = absenceTypeMeta[note.absence.type].label;
-    return note.active
-      ? `${label} до ${formatDate(note.absence.endDate)}`
-      : `${label} с ${formatDate(note.absence.startDate)}`;
+    return note ? formatAbsenceNote(note) : '';
   };
   const selectedAbsence = selectedEmployee ? absenceFor(selectedEmployee.id) : null;
   const isAdmin = user?.role === 'admin';

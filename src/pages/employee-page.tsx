@@ -104,6 +104,8 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
   const canManageAccounts = can(user?.role, 'employees:write');
   const canManageTasks = can(user?.role, 'tasks:write');
   const canManageEvents = can(user?.role, 'events:write');
+  const canManageOwnEvents =
+    canManageEvents && !(user?.role === 'hr' && id === user.employeeId);
 
   const employeeQuery = useQuery({
     queryKey: ['employee', id],
@@ -210,6 +212,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
   const department = departmentById.get(employee.departmentId);
   const position = positionById.get(employee.positionId);
   const manager = employee.managerId ? employeeById.get(employee.managerId) : null;
+  const managerLabel = manager ? fullName(manager) : employee.managerName ?? '—';
   const meta = employeeStatusMeta[employee.status];
   const absences = absencesQuery.data ?? [];
   const assignments = assignmentsQuery.data ?? [];
@@ -272,7 +275,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
         description={`${position?.name ?? '—'} · ${department?.name ?? '—'}`}
         actions={
           <>
-            {canManageEvents && employee.status !== 'dismissed' ? (
+            {canManageOwnEvents && employee.status !== 'dismissed' ? (
               <>
                 <Button
                   variant="outline"
@@ -322,6 +325,12 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
       {employee.status === 'dismissed' ? (
         <div className="mb-4 rounded-lg bg-surface-2 px-4 py-3 text-sm text-muted">
           Сотрудник уволен {formatDate(employee.dismissalDate)}. Карточка доступна в режиме просмотра.
+        </div>
+      ) : null}
+      {user?.role === 'hr' && id === user.employeeId ? (
+        <div className="mb-4 rounded-lg bg-surface-2 px-4 py-3 text-xs text-muted">
+          Свою должность, перевод и оклад оформляет администратор. Личные данные можно
+          редактировать самостоятельно.
         </div>
       ) : null}
 
@@ -391,7 +400,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
               <CardContent className="py-2">
                 <InfoRow label="Подразделение" value={department?.name ?? '—'} />
                 <InfoRow label="Должность" value={position?.name ?? '—'} />
-                <InfoRow label="Руководитель" value={manager ? fullName(manager) : '—'} />
+                <InfoRow label="Руководитель" value={managerLabel} />
                 <InfoRow label="Дата приёма" value={formatDate(employee.hireDate)} />
                 <InfoRow label="Тип занятости" value={employmentTypeLabels[employee.employmentType]} />
                 <InfoRow label="Статус" value={<Badge tone={meta.tone}>{meta.label}</Badge>} />

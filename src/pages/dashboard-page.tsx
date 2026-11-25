@@ -19,7 +19,7 @@ import {
 import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
+import { useLookups } from '@/shared/hooks/use-lookups';
 import { eventTypeMeta } from '@/shared/lib/meta';
 import {
   formatDate,
@@ -61,12 +61,13 @@ function Metric({
 
 export function DashboardPage() {
   const user = useAuthStore((state) => state.user);
-  const managerDepartmentId = useManagerDepartmentId();
   const { employeeById, departmentById } = useLookups();
 
+  // Область видимости считает сервер: менеджер получает свои подразделения
+  // и команды проектов, admin/HR — всех.
   const dashboard = useQuery({
-    queryKey: ['dashboard', managerDepartmentId],
-    queryFn: () => api.dashboard.get(managerDepartmentId),
+    queryKey: ['dashboard'],
+    queryFn: () => api.dashboard.get(),
   });
 
   if (user?.role === 'employee') return <Navigate to="/me" replace />;
@@ -311,37 +312,39 @@ export function DashboardPage() {
                 </div>
               </Card>
 
-              <Card>
-                <CardHeader title="Ближайшие дни рождения" />
-                <div className="divide-y divide-border">
-                  {data.birthdays.slice(0, 5).map((item) => {
-                    const employee = employeeById.get(item.employeeId);
-                    return (
-                      <Link
-                        key={item.employeeId}
-                        to={`/employees/${item.employeeId}`}
-                        className="flex items-center gap-3 px-6 py-2.5 transition hover:bg-surface-2/40"
-                      >
-                        {employee ? (
-                          <Avatar lastName={employee.lastName} firstName={employee.firstName} size="xs" />
-                        ) : null}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium text-fg">{fullName(employee)}</p>
-                          <p className="text-[10px] text-muted">
-                            {formatDate(item.date)} · {departmentById.get(employee?.departmentId ?? '')?.name ?? '—'}
-                          </p>
-                        </div>
-                        <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] text-muted">
-                          {item.daysLeft === 0 ? 'сегодня' : `через ${item.daysLeft} ${plural(item.daysLeft, ['день', 'дня', 'дней'])}`}
-                        </span>
-                      </Link>
-                    );
-                  })}
-                  {data.birthdays.length === 0 ? (
-                    <p className="px-6 py-4 text-xs text-muted">В ближайшие 30 дней дней рождения нет.</p>
-                  ) : null}
-                </div>
-              </Card>
+              {user?.role !== 'manager' ? (
+                <Card>
+                  <CardHeader title="Ближайшие дни рождения" />
+                  <div className="divide-y divide-border">
+                    {data.birthdays.slice(0, 5).map((item) => {
+                      const employee = employeeById.get(item.employeeId);
+                      return (
+                        <Link
+                          key={item.employeeId}
+                          to={`/employees/${item.employeeId}`}
+                          className="flex items-center gap-3 px-6 py-2.5 transition hover:bg-surface-2/40"
+                        >
+                          {employee ? (
+                            <Avatar lastName={employee.lastName} firstName={employee.firstName} size="xs" />
+                          ) : null}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-medium text-fg">{fullName(employee)}</p>
+                            <p className="text-[10px] text-muted">
+                              {formatDate(item.date)} · {departmentById.get(employee?.departmentId ?? '')?.name ?? '—'}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] text-muted">
+                            {item.daysLeft === 0 ? 'сегодня' : `через ${item.daysLeft} ${plural(item.daysLeft, ['день', 'дня', 'дней'])}`}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                    {data.birthdays.length === 0 ? (
+                      <p className="px-6 py-4 text-xs text-muted">В ближайшие 30 дней дней рождения нет.</p>
+                    ) : null}
+                  </div>
+                </Card>
+              ) : null}
             </div>
           </div>
         </>

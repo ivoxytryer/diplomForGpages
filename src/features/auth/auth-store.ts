@@ -26,7 +26,7 @@ export const useAuthStore = create<AuthState>()(
 export const useThemeStore = create<{ theme: 'light' | 'dark'; toggle: () => void }>()(
   persist(
     (set, get) => ({
-      theme: 'light',
+      theme: 'dark',
       toggle: () => {
         const next = get().theme === 'light' ? 'dark' : 'light';
         document.documentElement.classList.toggle('dark', next === 'dark');

@@ -1,6 +1,6 @@
 import type { Assignment, Project } from '@/shared/types';
 
-export const LOAD_LIMIT = 100;
+const LOAD_LIMIT = 100;
 export const ADMIN_LOAD_LIMIT = 150;
 
 export type ProjectLookup = Project[] | Map<string, Project>;
@@ -59,19 +59,4 @@ export function calculateLoad(
 
 export function remainingCapacity(load: number, limit = LOAD_LIMIT) {
   return Math.max(0, limit - load);
-}
-
-export function loadBand(load: number) {
-  if (load >= LOAD_LIMIT) return 'full' as const;
-  if (load >= 90) return 'critical' as const;
-  if (load >= 80) return 'high' as const;
-  return 'normal' as const;
-}
-
-export function activeAssignmentsOn(
-  assignments: Assignment[],
-  projects: ProjectLookup,
-  date: string,
-) {
-  return assignments.filter((assignment) => isAssignmentActiveOn(assignment, projects, date));
 }

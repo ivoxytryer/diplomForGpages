@@ -4,6 +4,7 @@ import {
   absenceDayBreakdown,
   findAbsenceOverlap,
   findEmployeeAbsenceNote,
+  formatAbsenceNote,
   periodsOverlap,
 } from './absences';
 
@@ -124,5 +125,20 @@ describe('absence overlap helpers', () => {
     expect(findEmployeeAbsenceNote(absences, 'e004', '2026-11-01')?.absence.id).toBe('ab-active');
     expect(findEmployeeAbsenceNote(absences, 'e004', '2026-10-01')).toBeNull();
     expect(findEmployeeAbsenceNote(absences, 'e005', '2026-11-21')).toBeNull();
+  });
+
+  it('показывает полный период и заявки на согласовании', () => {
+    const pending = absence({
+      id: 'ab-pending',
+      status: 'pending',
+      type: 'sick',
+      startDate: '2026-12-10',
+      endDate: '2026-12-12',
+    });
+    const note = findEmployeeAbsenceNote([pending], 'e004', '2026-12-01');
+    expect(note?.status).toBe('pending');
+    expect(formatAbsenceNote(note!)).toBe(
+      'Больничный (план): 10.12.2026 — 12.12.2026 · на согласовании',
+    );
   });
 });

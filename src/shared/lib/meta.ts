@@ -125,7 +125,7 @@ export const absenceTypeMeta: Record<AbsenceType, AbsenceTypeEntry> =
     }),
   );
 
-export const absenceStatusMeta: Record<AbsenceStatus, MetaEntry> = withFallback<MetaEntry>(
+const absenceStatusMeta: Record<AbsenceStatus, MetaEntry> = withFallback<MetaEntry>(
   {
     pending: { label: 'На согласовании', tone: 'neutral' },
     approved: { label: 'Согласовано', tone: 'neutral' },

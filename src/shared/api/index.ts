@@ -56,13 +56,14 @@ function del<T>(url: string) {
 }
 
 /**
- * Списочные ответы приводим к массиву. Если API временно вернул не JSON-массив
- * (например, HTML-заглушку при перезапуске service worker), страница не падает.
+ * Списочный ответ должен быть массивом. Раньше неверный ответ молча превращался
+ * в пустой список, и реальная ошибка API выглядела как «данных нет».
  */
 function getList<T>(url: string, params?: object) {
-  return get<unknown>(url, params).then((data) =>
-    Array.isArray(data) ? (data as T[]) : ([] as T[]),
-  );
+  return get<unknown>(url, params).then((data) => {
+    if (Array.isArray(data)) return data as T[];
+    throw new Error('Некорректный ответ сервера: ожидался список');
+  });
 }
 
 function normalizePage<T>(data: unknown, params: EmployeeQuery): Paginated<T> {

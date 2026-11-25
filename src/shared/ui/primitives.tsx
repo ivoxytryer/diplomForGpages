@@ -1,7 +1,35 @@
-import type { ComponentProps, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useId,
+  type AriaAttributes,
+  type ComponentProps,
+  type ReactNode,
+} from 'react';
 import { AlertCircle, Inbox, Loader2, type LucideIcon } from 'lucide-react';
 import { cn, getInitials } from '@/shared/lib/utils';
 import type { Tone } from '@/shared/lib/meta';
+
+interface FieldControlContextValue {
+  id: string;
+  describedBy?: string;
+  invalid: boolean;
+}
+
+const FieldControlContext = createContext<FieldControlContextValue | null>(null);
+
+function useFieldControl(props: {
+  id?: string;
+  'aria-describedby'?: string;
+  'aria-invalid'?: AriaAttributes['aria-invalid'];
+}) {
+  const field = useContext(FieldControlContext);
+  return {
+    id: props.id ?? field?.id,
+    'aria-describedby': props['aria-describedby'] ?? field?.describedBy,
+    'aria-invalid': props['aria-invalid'] ?? (field?.invalid ? true : undefined),
+  };
+}
 
 function Label({ className, ...props }: ComponentProps<'label'>) {
   return (
@@ -16,16 +44,25 @@ const fieldBase =
   'w-full rounded-none border border-border bg-surface px-2.5 text-[13px] text-fg placeholder:text-muted/70 transition-colors focus:border-fg focus:outline-none focus:ring-1 focus:ring-fg/15 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:opacity-70';
 
 export function Input({ className, ...props }: ComponentProps<'input'>) {
-  return <input className={cn(fieldBase, 'h-10', className)} {...props} />;
+  const field = useFieldControl(props);
+  return <input {...props} {...field} className={cn(fieldBase, 'h-10', className)} />;
 }
 
 export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
-  return <textarea className={cn(fieldBase, 'min-h-24 py-2.5', className)} {...props} />;
+  const field = useFieldControl(props);
+  return (
+    <textarea
+      {...props}
+      {...field}
+      className={cn(fieldBase, 'min-h-24 py-2.5', className)}
+    />
+  );
 }
 
 export function Select({ className, children, ...props }: ComponentProps<'select'>) {
+  const field = useFieldControl(props);
   return (
-    <select className={cn(fieldBase, 'h-10 pr-8', className)} {...props}>
+    <select {...props} {...field} className={cn(fieldBase, 'h-10 pr-8', className)}>
       {children}
     </select>
   );
@@ -44,12 +81,29 @@ export function Field({
   className?: string;
   children: ReactNode;
 }) {
+  const id = useId();
+  const errorId = error ? `${id}-error` : undefined;
+  const hintId = !error && hint ? `${id}-hint` : undefined;
+  const describedBy = errorId ?? hintId;
+
   return (
     <div className={className}>
-      {label ? <Label>{label}</Label> : null}
-      {children}
-      {error ? <p className="mt-1 text-xs text-danger">{error}</p> : null}
-      {!error && hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
+      {label ? <Label htmlFor={id}>{label}</Label> : null}
+      <FieldControlContext.Provider
+        value={{ id, describedBy, invalid: Boolean(error) }}
+      >
+        {children}
+      </FieldControlContext.Provider>
+      {error ? (
+        <p id={errorId} className="mt-1 text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
+      {!error && hint ? (
+        <p id={hintId} className="mt-1 text-xs text-muted">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }

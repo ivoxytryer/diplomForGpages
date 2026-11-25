@@ -16,7 +16,7 @@ import {
   monthKey,
   plural,
 } from '@/shared/lib/utils';
-import { getCalendarDay, isRedDay } from '@/shared/lib/calendar';
+import { getCalendarDay, isCalendarYearSupported, isRedDay } from '@/shared/lib/calendar';
 import { MonthSwitcher, PageHeader, SearchInput } from '@/shared/ui/page';
 import { Badge, Card, EmptyState, ErrorState, Field, Input, Select, Skeleton } from '@/shared/ui/primitives';
 import { Button } from '@/shared/ui/button';
@@ -123,6 +123,17 @@ export function TimesheetPage() {
         description="Отметки присутствия по дням месяца, нормы и итоги"
         actions={<MonthSwitcher value={month} onChange={setMonth} />}
       />
+
+      {!isCalendarYearSupported(Number(month.slice(0, 4))) ? (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-danger/30 px-3 py-2 text-xs leading-5 text-danger">
+          <Info className="mt-0.5 size-4 shrink-0" />
+          <p>
+            Производственный календарь на {month.slice(0, 4)} год не настроен. Нормы,
+            праздники и переносы могут быть неверными — обновите календарь перед
+            утверждением табеля.
+          </p>
+        </div>
+      ) : null}
 
       <Card className="mb-3 p-3">
         <div className="flex flex-wrap items-center gap-2">

@@ -10,7 +10,7 @@
       try {
         var raw = localStorage.getItem('hr-theme');
         var parsed = raw ? JSON.parse(raw) : null;
-        var theme = parsed && parsed.state ? parsed.state.theme : 'light';
+        var theme = parsed && parsed.state && parsed.state.theme === 'light' ? 'light' : 'dark';
         if (theme === 'dark') document.documentElement.classList.add('dark');
       } catch (e) {
         /* noop */

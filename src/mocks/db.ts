@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import type {
   Absence,
   Assignment,
@@ -16,6 +15,8 @@ import { createSeed, seedPositions, seedProjectTasks } from './data';
 import { hashPassword } from './password';
 import { absenceEventType, timesheetCodes } from '@/shared/lib/meta';
 import { absenceDayBreakdown } from '@/shared/lib/absences';
+import { todayISO } from '@/shared/lib/utils';
+import { resolveEmployeeStatus } from './domain/absences';
 import {
   ABSENCE_STATUSES,
   ABSENCE_TYPES,
@@ -137,19 +138,6 @@ function migrate(db: Db): Db {
     });
   });
 
-  // Испытательный срок не требует ручного действия: если он истёк,
-  // сотрудник автоматически переходит в статус «Работает».
-  const today = dayjs().startOf('day');
-  db.employees.forEach((employee) => {
-    if (
-      employee.status === 'probation' &&
-      !dayjs(employee.hireDate).add(3, 'month').isAfter(today)
-    ) {
-      employee.status = 'active';
-      changed = true;
-    }
-  });
-
   db.projects.forEach((project) => {
     const status = oneOf(project.status, PROJECT_STATUSES, 'planning');
     if (status !== project.status) {
@@ -191,6 +179,17 @@ function migrate(db: Db): Db {
       changed = true;
     }
     return true;
+  });
+
+  // Статус «в отпуске/на больничном» — производная от заявок, а не вечная
+  // отметка. Пересчитываем при каждой загрузке, чтобы он не залипал.
+  const today = todayISO();
+  db.employees.forEach((employee) => {
+    const next = resolveEmployeeStatus(db, employee, today);
+    if (next !== employee.status) {
+      employee.status = next;
+      changed = true;
+    }
   });
 
   Object.entries(db.timesheetStatuses).forEach(([key, status]) => {
@@ -295,12 +294,6 @@ function migrate(db: Db): Db {
       db.vacationBalances.push(balance);
       changed = true;
     });
-
-  const legacyDb = db as Db & { payslips?: unknown };
-  if ('payslips' in legacyDb) {
-    delete legacyDb.payslips;
-    changed = true;
-  }
 
   // Старые события об отпусках создавались без ссылки на заявку — связываем их,
   // чтобы правка и удаление заявки синхронизировались с лентой событий.

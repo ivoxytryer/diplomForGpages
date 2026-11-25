@@ -35,6 +35,9 @@ export function ProjectsPage() {
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<ProjectStatus | ''>('');
+  const [scope, setScope] = useState<'mine' | 'all'>(
+    user?.role === 'manager' ? 'mine' : 'all',
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [formOpen, setFormOpen] = useState(false);
@@ -68,16 +71,23 @@ export function ProjectsPage() {
     onError: (error) => toast.error('Не удалось удалить проект', getErrorMessage(error)),
   });
 
+  const scopedProjects = useMemo(() => {
+    if (user?.role === 'manager' && scope === 'mine') {
+      return projects.filter((project) => project.managerId === user.employeeId);
+    }
+    return projects;
+  }, [projects, scope, user?.employeeId, user?.role]);
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return projects.filter((project) => {
+    return scopedProjects.filter((project) => {
       if (status && project.status !== status) return false;
       if (!term) return true;
       return `${project.name} ${project.code} ${project.description ?? ''}`
         .toLowerCase()
         .includes(term);
     });
-  }, [projects, search, status]);
+  }, [scopedProjects, search, status]);
 
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
@@ -94,9 +104,13 @@ export function ProjectsPage() {
       .filter((assignment) => assignment.projectId === projectId)
       .reduce((sum, assignment) => sum + assignment.allocation, 0);
 
-  const activeProjects = projects.filter((project) => project.status === 'active').length;
-  const totalTeam = new Set(assignments.map((assignment) => assignment.employeeId)).size;
-  const totalLoad = assignments.reduce((sum, assignment) => sum + assignment.allocation, 0);
+  const scopedProjectIds = new Set(scopedProjects.map((project) => project.id));
+  const scopedAssignments = assignments.filter((assignment) =>
+    scopedProjectIds.has(assignment.projectId),
+  );
+  const activeProjects = scopedProjects.filter((project) => project.status === 'active').length;
+  const totalTeam = new Set(scopedAssignments.map((assignment) => assignment.employeeId)).size;
+  const totalLoad = scopedAssignments.reduce((sum, assignment) => sum + assignment.allocation, 0);
   const avgLoad = totalTeam ? Math.round(totalLoad / totalTeam) : 0;
 
   return (
@@ -120,7 +134,7 @@ export function ProjectsPage() {
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Всего проектов" value={projects.length} icon={FolderKanban} />
+        <StatCard label="Всего проектов" value={scopedProjects.length} icon={FolderKanban} />
         <StatCard label="Активные" value={activeProjects} icon={FolderKanban} tone="success" />
         <StatCard label="Сотрудников в проектах" value={totalTeam} icon={Users} tone="info" />
         <StatCard
@@ -134,6 +148,34 @@ export function ProjectsPage() {
 
       <Card className="p-3">
         <div className="flex flex-wrap items-center gap-2">
+          {user?.role === 'manager' ? (
+            <div className="inline-flex border border-border">
+              <button
+                type="button"
+                onClick={() => {
+                  setScope('mine');
+                  setPage(1);
+                }}
+                className={`px-3 py-2 text-xs font-medium transition ${
+                  scope === 'mine' ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg'
+                }`}
+              >
+                Мои проекты
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScope('all');
+                  setPage(1);
+                }}
+                className={`border-l border-border px-3 py-2 text-xs font-medium transition ${
+                  scope === 'all' ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg'
+                }`}
+              >
+                Все проекты
+              </button>
+            </div>
+          ) : null}
           <SearchInput
             value={search}
             onChange={(value) => {
@@ -189,6 +231,8 @@ export function ProjectsPage() {
                   const manager = project.managerId ? employeeById.get(project.managerId) : null;
                   const team = teamSize(project.id);
                   const load = plannedLoad(project.id);
+                  const isOwnProject =
+                    user?.role !== 'manager' || project.managerId === user?.employeeId;
                   return (
                     <TR key={project.id}>
                       <TD>
@@ -202,6 +246,11 @@ export function ProjectsPage() {
                               {project.code}
                               {project.description ? ` · ${project.description}` : ''}
                             </span>
+                            {!isOwnProject ? (
+                              <span className="mt-1 inline-block text-[10px] text-muted">
+                                Только просмотр
+                              </span>
+                            ) : null}
                           </span>
                         </Link>
                       </TD>
@@ -220,15 +269,23 @@ export function ProjectsPage() {
                             />
                             <span className="text-xs text-fg">{fullName(manager)}</span>
                           </span>
+                        ) : project.managerName ? (
+                          <span className="text-xs text-fg">{project.managerName}</span>
                         ) : (
                           <span className="text-xs text-muted">Не назначен</span>
                         )}
                       </TD>
                       <TD>
-                        <p className="text-xs font-medium text-fg">
-                          {team} {plural(team, ['человек', 'человека', 'человек'])}
-                        </p>
-                        <p className="text-[11px] text-muted">загрузка {load}%</p>
+                        {isOwnProject ? (
+                          <>
+                            <p className="text-xs font-medium text-fg">
+                              {team} {plural(team, ['человек', 'человека', 'человек'])}
+                            </p>
+                            <p className="text-[11px] text-muted">загрузка {load}%</p>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted">—</span>
+                        )}
                       </TD>
                       <TD className="whitespace-nowrap text-xs text-muted">
                         {formatDate(project.startDate)} —{' '}

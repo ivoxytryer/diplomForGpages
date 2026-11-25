@@ -9,26 +9,34 @@ function normalize(rows: CellValue[][]) {
   return rows.map((row) => row.map((cell) => (cell === null || cell === undefined ? '' : cell)));
 }
 
-export async function exportExcel(filename: string, sheets: ExcelSheet[]) {
-  const XLSX = await import('xlsx');
-  const workbook = XLSX.utils.book_new();
+function columnWidths(rows: CellValue[][]) {
+  return rows.reduce<number[]>((acc, row) => {
+    row.forEach((cell, index) => {
+      const length = String(cell).length + 2;
+      acc[index] = Math.max(acc[index] ?? 10, Math.min(length, 52));
+    });
+    return acc;
+  }, []);
+}
 
-  sheets.forEach((sheet) => {
+export async function exportExcel(filename: string, sheets: ExcelSheet[]) {
+  // write-excel-file собирает .xlsx в браузере без Node-полифилов и без
+  // уязвимого xlsx@0.18. Динамический импорт держит библиотеку вне initial bundle.
+  const { default: writeXlsxFile } = await import('write-excel-file/browser');
+
+  const data = sheets.map((sheet) => {
     const rows = normalize(sheet.rows);
-    const worksheet = XLSX.utils.aoa_to_sheet(rows);
-    const widths = rows.reduce<number[]>((acc, row) => {
-      row.forEach((cell, index) => {
-        const length = String(cell).length + 2;
-        acc[index] = Math.max(acc[index] ?? 10, Math.min(length, 52));
-      });
-      return acc;
-    }, []);
-    worksheet['!cols'] = widths.map((width) => ({ wch: width }));
-    const safeName = sheet.name.replace(/[\\/*?:[\]]/g, ' ').slice(0, 31) || 'Лист';
-    XLSX.utils.book_append_sheet(workbook, worksheet, safeName);
+    return {
+      data: rows,
+      sheet: sheet.name.replace(/[\\/*?:[\]]/g, ' ').slice(0, 31) || 'Лист',
+      columns: columnWidths(rows).map((width) => ({ width })),
+      stickyRowsCount: 1,
+    };
   });
 
-  XLSX.writeFile(workbook, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+  await writeXlsxFile(data).toFile(
+    filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`,
+  );
 }
 
 export function printDocument() {

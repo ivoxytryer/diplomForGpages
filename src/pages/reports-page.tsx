@@ -18,14 +18,13 @@ import { exportExcel, printDocument, todayStamp } from '@/shared/lib/export';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
 import {
-  absenceTypeMeta,
   eventTypeMeta,
   projectStatusMeta,
   timesheetStatusMeta,
 } from '@/shared/lib/meta';
 import { formatDate, formatMoney, fullName, monthKey, monthLabel, plural, todayISO } from '@/shared/lib/utils';
 import { isAssignmentActiveOn } from '@/shared/lib/workload';
-import { findEmployeeAbsenceNote } from '@/shared/lib/absences';
+import { findEmployeeAbsenceNote, formatAbsenceNote } from '@/shared/lib/absences';
 import { MonthSwitcher, PageHeader, StatCard } from '@/shared/ui/page';
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Select, Skeleton } from '@/shared/ui/primitives';
 import { Button } from '@/shared/ui/button';
@@ -372,13 +371,7 @@ export function ReportsPage() {
           const absence = employee
             ? findEmployeeAbsenceNote(absencesQuery.data ?? [], employee.id, today)
             : null;
-          const absenceText = absence
-            ? `${absenceTypeMeta[absence.absence.type].label} ${
-                absence.active ? 'до' : 'с'
-              } ${formatDate(
-                absence.active ? absence.absence.endDate : absence.absence.startDate,
-              )}`
-            : '—';
+          const absenceText = absence ? formatAbsenceNote(absence) : '—';
           return {
             project: project?.name ?? assignment.projectId,
             code: project?.code ?? '',
