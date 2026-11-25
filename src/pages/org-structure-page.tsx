@@ -157,6 +157,9 @@ export function OrgStructurePage() {
   const query = useQuery({
     queryKey: ['org', 'structure'],
     queryFn: api.org.structure,
+    // После создания отдела/должности или перевода сотрудника дерево
+    // должно пересчитываться при следующем открытии, а не жить 30 секунд.
+    staleTime: 0,
   });
 
   const roots = useMemo(() => query.data?.roots ?? [], [query.data]);

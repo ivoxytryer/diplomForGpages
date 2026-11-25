@@ -136,6 +136,7 @@ export function EventForm({
       queryClient.invalidateQueries({ queryKey: ['timesheet'] });
       queryClient.invalidateQueries({ queryKey: ['workload'] });
       queryClient.invalidateQueries({ queryKey: ['audit'] });
+      queryClient.invalidateQueries({ queryKey: ['org'] });
       toast.success('Кадровое событие создано');
       onClose();
     },

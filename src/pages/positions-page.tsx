@@ -39,6 +39,7 @@ export function PositionsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['positions'] });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['org'] });
       toast.success('Должность удалена');
       setDeleting(null);
     },
@@ -196,6 +197,7 @@ function PositionFormDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['positions'] });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['org'] });
       toast.success(position ? 'Должность обновлена' : 'Должность создана');
       onClose();
     },

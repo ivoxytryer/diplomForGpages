@@ -245,6 +245,7 @@ export function EmployeeForm({
     queryClient.invalidateQueries({ queryKey: ['projects'] });
     queryClient.invalidateQueries({ queryKey: ['project'] });
     queryClient.invalidateQueries({ queryKey: ['audit'] });
+    queryClient.invalidateQueries({ queryKey: ['org'] });
   };
 
   const mutation = useMutation({

@@ -64,6 +64,7 @@ export function DepartmentsPage() {
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['org'] });
       toast.success('Подразделение удалено');
       setDeleting(null);
     },
@@ -229,6 +230,7 @@ function DepartmentFormDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['org'] });
       toast.success(department ? 'Подразделение обновлено' : 'Подразделение создано');
       onClose();
     },

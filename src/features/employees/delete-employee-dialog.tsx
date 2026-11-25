@@ -58,6 +58,7 @@ export function DeleteEmployeeDialog({
       queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.invalidateQueries({ queryKey: ['workload'] });
       queryClient.invalidateQueries({ queryKey: ['audit'] });
+      queryClient.invalidateQueries({ queryKey: ['org'] });
       toast.success('Сотрудник удалён');
       onClose();
     },
