@@ -72,6 +72,10 @@ const NotFoundPage = lazy(() =>
 const staff: Role[] = ['admin', 'hr', 'manager'];
 const everyone: Role[] = ['admin', 'hr', 'manager', 'employee'];
 
+// На GitHub Pages приложение живёт в /<repo>/, поэтому роутер должен знать
+// префикс. Иначе прямой заход на /directory/structure даёт 404.
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },
   {
@@ -221,4 +225,4 @@ export const router = createBrowserRouter([
       },
     ],
   },
-]);
+], { basename });
