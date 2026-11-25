@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
   Briefcase,
+  Building2,
   CalendarDays,
   ChartNoAxesCombined,
   ClipboardList,
@@ -46,7 +47,8 @@ const navSections: NavSection[] = [
   {
     title: 'Организация',
     items: [
-      { to: '/directory/departments', label: 'Подразделения', icon: Network, roles: ['admin', 'hr'] },
+      { to: '/directory/structure', label: 'Орг-структура', icon: Network, roles: ['admin', 'hr', 'manager'] },
+      { to: '/directory/departments', label: 'Подразделения', icon: Building2, roles: ['admin', 'hr'] },
       { to: '/directory/positions', label: 'Должности', icon: Briefcase, roles: ['admin', 'hr'] },
       { to: '/projects', label: 'Проекты', icon: FolderKanban, roles: ['admin', 'hr', 'manager'] },
       { to: '/tasks', label: 'Задачи', icon: ListTodo, roles: ['admin', 'hr', 'manager', 'employee'] },

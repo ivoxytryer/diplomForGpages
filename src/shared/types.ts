@@ -37,6 +37,30 @@ export interface Department {
   description?: string;
 }
 
+export interface OrgStructureEmployee {
+  id: string;
+  name: string;
+  positionName?: string;
+}
+
+export interface OrgStructureNode {
+  id: string;
+  name: string;
+  code: string;
+  parentId?: string | null;
+  parentName?: string | null;
+  head: OrgStructureEmployee | null;
+  directCount: number;
+  totalCount: number;
+  employees: OrgStructureEmployee[];
+  children: OrgStructureNode[];
+}
+
+export interface OrgStructureResponse {
+  roots: OrgStructureNode[];
+  totalEmployees: number;
+}
+
 export interface Position {
   id: string;
   name: string;

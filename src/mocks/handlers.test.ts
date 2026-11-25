@@ -3,6 +3,7 @@ import { setupServer } from 'msw/node';
 import dayjs from 'dayjs';
 import { handlers } from './handlers';
 import { MemoryStorage } from '@/test/memory-storage';
+import type { OrgStructureNode } from '@/shared/types';
 import { monthKey, todayISO } from '@/shared/lib/utils';
 
 const BASE = 'http://localhost/api/v1';
@@ -1051,6 +1052,43 @@ describe('лента событий и отсутствия', () => {
     events
       .filter((event) => absenceTypes.includes(String(event.type)))
       .forEach((event) => expect(event.absenceId).toBeTruthy());
+  });
+});
+
+describe('орг-структура', () => {
+  const collectIds = (nodes: OrgStructureNode[], result = new Set<string>()) => {
+    nodes.forEach((node) => {
+      result.add(node.id);
+      collectIds(node.children, result);
+    });
+    return result;
+  };
+
+  it('admin видит всё дерево', async () => {
+    const admin = await login('admin@hr.local');
+    const result = await call('GET', '/org/structure', undefined, admin.token);
+    expect(result.status).toBe(200);
+    const data = asItem(result.data);
+    const ids = collectIds(asArray(data.roots) as unknown as OrgStructureNode[]);
+    expect(ids.has('d1')).toBe(true);
+    expect(ids.has('d5')).toBe(true);
+    expect(Number(data.totalEmployees)).toBeGreaterThan(0);
+  });
+
+  it('manager видит только свою область', async () => {
+    const manager = await login('manager@hr.local');
+    const result = await call('GET', '/org/structure', undefined, manager.token);
+    expect(result.status).toBe(200);
+    const data = asItem(result.data);
+    expect([...collectIds(asArray(data.roots) as unknown as OrgStructureNode[])].sort()).toEqual([
+      'd4',
+      'd5',
+    ]);
+  });
+
+  it('employee не имеет доступа к орг-структуре', async () => {
+    const employee = await login('employee@hr.local');
+    expect((await call('GET', '/org/structure', undefined, employee.token)).status).toBe(403);
   });
 });
 

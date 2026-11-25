@@ -22,6 +22,7 @@ import type {
   HrEventPayload,
   LoginPayload,
   Notification,
+  OrgStructureResponse,
   Paginated,
   Position,
   PositionPayload,
@@ -159,6 +160,10 @@ export const api = {
     update: (id: string, payload: Partial<DepartmentPayload>) =>
       patch<Department>(`/departments/${id}`, payload),
     remove: (id: string) => del<{ ok: true }>(`/departments/${id}`),
+  },
+
+  org: {
+    structure: () => get<OrgStructureResponse>('/org/structure'),
   },
 
   positions: {

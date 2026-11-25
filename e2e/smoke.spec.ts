@@ -65,6 +65,23 @@ test('роли: разрешённые и запрещённые разделы'
   await expect(page).toHaveURL(/\/me$/);
 });
 
+test('admin: орг-структура', async ({ page }) => {
+  await login(page, 'admin@hr.local');
+  await page.goto('/directory/structure');
+
+  await expect(page.getByRole('heading', { name: 'Орг-структура' })).toBeVisible();
+  await expect(page.getByText('IT-департамент', { exact: false }).first()).toBeVisible();
+
+  await page.getByRole('button', { name: /IT-департамент/ }).first().click();
+  await expect(page.getByText('Руководитель', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Сотрудники', { exact: true }).first()).toBeVisible();
+
+  await page
+    .getByPlaceholder('Отдел, код, руководитель или сотрудник…')
+    .fill('Отдел разработки');
+  await expect(page.getByText('Отдел разработки', { exact: false }).first()).toBeVisible();
+});
+
 test('admin: создание сотрудника', async ({ page }) => {
   await login(page, 'admin@hr.local');
   await page.goto('/employees');

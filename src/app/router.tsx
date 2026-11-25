@@ -21,6 +21,11 @@ const EmployeesPage = lazy(() =>
 const EmployeePage = lazy(() =>
   import('@/pages/employee-page').then((module) => ({ default: module.EmployeePage })),
 );
+const OrgStructurePage = lazy(() =>
+  import('@/pages/org-structure-page').then((module) => ({
+    default: module.OrgStructurePage,
+  })),
+);
 const DepartmentsPage = lazy(() =>
   import('@/pages/departments-page').then((module) => ({ default: module.DepartmentsPage })),
 );
@@ -105,6 +110,14 @@ export const router = createBrowserRouter([
           {
             path: 'directory',
             element: <Navigate to="/directory/departments" replace />,
+          },
+          {
+            path: 'directory/structure',
+            element: (
+              <RequireRole roles={staff}>
+                <OrgStructurePage />
+              </RequireRole>
+            ),
           },
           {
             path: 'directory/departments',

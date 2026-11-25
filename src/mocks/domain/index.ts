@@ -10,6 +10,7 @@ export * from './result';
 export * from './ids';
 export * from './fields';
 export * from './positions';
+export * from './org';
 export * from './promotion';
 export * from './audit';
 export * from './notifications';

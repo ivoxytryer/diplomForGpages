@@ -11,6 +11,7 @@ import { notificationHandlers } from './notifications';
 import { dashboardHandlers } from './dashboard';
 import { employeeHandlers } from './employees';
 import { departmentHandlers } from './departments';
+import { orgHandlers } from './org';
 import { positionHandlers } from './positions';
 import { projectHandlers } from './projects';
 import { assignmentHandlers } from './assignments';
@@ -30,6 +31,7 @@ export const handlers = [
   ...employeeHandlers,
   ...departmentHandlers,
   ...positionHandlers,
+  ...orgHandlers,
   ...projectHandlers,
   ...assignmentHandlers,
   ...taskHandlers,
