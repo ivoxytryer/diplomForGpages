@@ -198,6 +198,7 @@ npm run preview    # предпросмотр собранного прилож�
 npm run typecheck  # tsc --noEmit
 npm test           # Vitest (unit- и интеграционные тесты)
 npm run test:watch # Vitest в watch-режиме
+npm run test:e2e   # Playwright smoke-тесты в браузере
 npm run lint       # ESLint
 npm run msw:init   # (пере)генерация public/mockServiceWorker.js
 ```
@@ -275,6 +276,12 @@ npm test
 сотрудника и ленты событий), табель, задачи, пользователей, аудит и сброс данных.
 
 Журнал последнего прохода по `ub-mode`: [`docs/UB-MODE-LOG.md`](docs/UB-MODE-LOG.md).
+
+Браузерный smoke-набор лежит в `e2e/smoke.spec.ts` и запускается через Playwright.
+Он проверяет вход и тёмную тему, роли, создание сотрудника, правку табеля,
+согласование отсутствия, выгрузку Excel, focus trap и мобильную ширину.
+Перед первым запуском нужен браузер: `npx playwright install chromium`.
+CI выполняет `npm run test:e2e` отдельным job'ом.
 
 ## Демо-данные и сброс
 
