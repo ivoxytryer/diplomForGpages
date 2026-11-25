@@ -38,7 +38,7 @@ apiClient.interceptors.response.use(
       if (!isLoginRequest) {
         useAuthStore.getState().logout();
         if (!window.location.pathname.startsWith('/login')) {
-          window.location.assign('/login');
+          window.location.assign(`${import.meta.env.BASE_URL}login`);
         }
       }
     }

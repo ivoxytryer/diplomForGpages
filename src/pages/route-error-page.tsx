@@ -33,7 +33,10 @@ export function RouteErrorPage() {
           <Button onClick={() => window.location.reload()}>
             <RotateCcw /> Обновить страницу
           </Button>
-          <Button variant="outline" onClick={() => window.location.assign('/')}>
+          <Button
+            variant="outline"
+            onClick={() => window.location.assign(import.meta.env.BASE_URL)}
+          >
             На главную
           </Button>
         </div>
