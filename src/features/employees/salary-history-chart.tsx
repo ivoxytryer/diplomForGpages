@@ -33,7 +33,10 @@ export function SalaryHistoryChart({ steps }: { steps: SalaryStep[] }) {
     path += ` H ${point.x} V ${point.y}`;
   });
 
-  const gridValues = [min, min + (max - min) / 2, max];
+  const gridValues =
+    rawMin === rawMax
+      ? [rawMin]
+      : [rawMin, Math.round((rawMin + rawMax) / 2), rawMax];
   const labels = steps.length <= 4 ? steps.map((step) => step.date) : [steps[0].date, steps[steps.length - 1].date];
 
   return (
@@ -82,7 +85,7 @@ export function SalaryHistoryChart({ steps }: { steps: SalaryStep[] }) {
 
       {labels.map((date, index) => (
         <text
-          key={date}
+          key={`${date}-${index}`}
           x={steps.length <= 4 ? xFor(steps.findIndex((step) => step.date === date)) : index === 0 ? PADDING.left : WIDTH - PADDING.right}
           y={HEIGHT - 8}
           textAnchor={index === 0 ? 'start' : steps.length <= 4 ? 'middle' : 'end'}

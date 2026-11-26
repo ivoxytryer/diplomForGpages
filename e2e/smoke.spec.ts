@@ -94,6 +94,27 @@ test('admin: история должностей и окладов', async ({ pa
   ).toBeVisible();
 });
 
+test('admin: изменение оклада сразу появляется в истории', async ({ page }) => {
+  await login(page, 'admin@hr.local');
+  await page.goto('/employees/e004');
+  await page.getByRole('button', { name: /История/ }).click();
+
+  await page.getByRole('button', { name: /Событие/ }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByLabel('Тип события').selectOption('salary_change');
+  await dialog.getByLabel('Дата *').fill('2026-11-26');
+  await dialog.getByLabel('Заголовок *').fill('Смоук: изменение оклада');
+  await dialog.getByLabel('Новый оклад, ₽').fill('185000');
+  await dialog.getByLabel('Комментарий').fill('Проверка обновления истории');
+  await dialog.getByRole('button', { name: 'Создать событие' }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('Смоук: изменение оклада', { exact: true })).toBeVisible();
+  await expect(page.getByText('185 000 ₽').first()).toBeVisible();
+});
+
 test('admin: создание сотрудника', async ({ page }) => {
   await login(page, 'admin@hr.local');
   await page.goto('/employees');
