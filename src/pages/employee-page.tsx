@@ -978,6 +978,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                     <TH>Событие</TH>
                     <TH>Подразделение</TH>
                     <TH>Должность</TH>
+                    <TH>Грейд</TH>
                     {canSeeSalary ? <TH className="text-right">Оклад</TH> : null}
                     <TH>Автор</TH>
                   </tr>
@@ -997,6 +998,12 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                       entry.fromPositionName !== entry.toPositionName
                         ? `${entry.fromPositionName} → ${entry.toPositionName}`
                         : entry.toPositionName ?? entry.fromPositionName ?? '—';
+                    const gradeLabel =
+                      entry.fromGrade &&
+                      entry.toGrade &&
+                      entry.fromGrade !== entry.toGrade
+                        ? `${entry.fromGrade} → ${entry.toGrade}`
+                        : entry.grade ?? entry.toGrade ?? entry.fromGrade ?? '—';
                     const salaryLabel =
                       entry.newSalary === null || entry.newSalary === undefined
                         ? '—'
@@ -1024,6 +1031,9 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                         </TD>
                         <TD className="text-xs text-muted">{departmentLabel}</TD>
                         <TD className="text-xs text-muted">{positionLabel}</TD>
+                        <TD className="whitespace-nowrap text-xs tabular-nums text-muted">
+                          {gradeLabel}
+                        </TD>
                         {canSeeSalary ? (
                           <TD className="whitespace-nowrap text-right text-xs tabular-nums text-fg">
                             {salaryLabel}

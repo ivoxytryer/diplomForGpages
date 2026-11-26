@@ -90,8 +90,84 @@ describe('buildEmployeeHistory', () => {
     expect(history.entries.map((entry) => entry.id)).toEqual(['ev3', 'ev2', 'ev1']);
     expect(history.entries[0].departmentName).toBe('Отдел данных');
     expect(history.entries[0].positionName).toBe('Ведущий аналитик');
+    expect(history.entries[0].grade).toBe(3);
+    expect(history.entries[0].fromGrade).toBe(2);
+    expect(history.entries[0].toGrade).toBe(3);
     expect(history.entries[0].authorName).toBe('Админов Админ');
     expect(history.salarySteps.map((step) => step.salary)).toEqual([90000, 120000, 150000]);
+    expect(history.salarySteps.map((step) => step.grade)).toEqual([1, 2, 3]);
+  });
+
+  it('для изменения оклада без повышения показывает текущие должность и грейд', () => {
+    const history = buildEmployeeHistory({
+      events: [
+        {
+          id: 'ev4',
+          employeeId: 'e1',
+          type: 'salary_change',
+          date: '2026-01-01',
+          title: 'Изменение оклада',
+          oldSalary: 150000,
+          newSalary: 170000,
+          authorId: 'e9',
+        },
+      ],
+      employee,
+      departments,
+      positions,
+      employees: [employee, author],
+      canViewSalary: true,
+    });
+
+    expect(history.entries[0].positionName).toBe('Старший аналитик');
+    expect(history.entries[0].grade).toBe(2);
+    expect(history.salarySteps[0].grade).toBe(2);
+  });
+
+  it('для изменения оклада до повышения берёт грейд должности на тот момент', () => {
+    const history = buildEmployeeHistory({
+      events: [
+        {
+          id: 'ev1',
+          employeeId: 'e1',
+          type: 'hire',
+          date: '2020-01-01',
+          title: 'Приём',
+          toPositionId: 'p1',
+          toDepartmentId: 'd1',
+          newSalary: 90000,
+        },
+        {
+          id: 'ev2',
+          employeeId: 'e1',
+          type: 'salary_change',
+          date: '2022-01-01',
+          title: 'Изменение оклада',
+          oldSalary: 90000,
+          newSalary: 100000,
+        },
+        {
+          id: 'ev3',
+          employeeId: 'e1',
+          type: 'promotion',
+          date: '2023-01-01',
+          title: 'Повышение',
+          toPositionId: 'p2',
+          toDepartmentId: 'd1',
+          newSalary: 120000,
+        },
+      ],
+      employee,
+      departments,
+      positions,
+      employees: [employee],
+      canViewSalary: true,
+    });
+
+    const salaryChange = history.entries.find((entry) => entry.type === 'salary_change');
+    expect(salaryChange?.grade).toBe(1);
+    expect(salaryChange?.positionName).toBe('Аналитик');
+    expect(history.salarySteps.map((step) => step.grade)).toEqual([1, 1, 2]);
   });
 
   it('скрывает оклады, если нет права', () => {

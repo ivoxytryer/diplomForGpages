@@ -78,6 +78,7 @@ export function SalaryHistoryChart({ steps }: { steps: SalaryStep[] }) {
           <circle cx={x} cy={y} r={3} fill="var(--surface)" stroke="var(--fg)" strokeWidth={1.5}>
             <title>
               {formatDate(step.date)} · {step.label} · {formatMoney(step.salary)}
+              {step.grade ? ` · грейд ${step.grade}` : ''}
             </title>
           </circle>
         </g>

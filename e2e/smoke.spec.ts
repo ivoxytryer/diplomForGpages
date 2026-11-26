@@ -89,6 +89,7 @@ test('admin: история должностей и окладов', async ({ pa
   await page.getByRole('button', { name: /История/ }).click();
   await expect(page.getByText('История должностей и окладов')).toBeVisible();
   await expect(page.getByText('Динамика оклада')).toBeVisible();
+  await expect(page.getByText('Грейд', { exact: true })).toBeVisible();
   await expect(
     page.locator('td').filter({ hasText: 'Изменение оклада' }).first(),
   ).toBeVisible();
