@@ -32,6 +32,19 @@ describe('seed data integrity', () => {
     });
   });
 
+  it('оформляет изменение оклада от администратора', () => {
+    const adminEmployeeIds = new Set(
+      db.users
+        .filter((user) => user.role === 'admin' && user.employeeId)
+        .map((user) => user.employeeId),
+    );
+    db.events
+      .filter((event) => event.type === 'salary_change')
+      .forEach((event) => {
+        expect(adminEmployeeIds.has(event.authorId ?? '')).toBe(true);
+      });
+  });
+
   it('links employees to existing departments, positions and managers', () => {
     db.employees.forEach((employee) => {
       expect(departmentIds.has(employee.departmentId)).toBe(true);

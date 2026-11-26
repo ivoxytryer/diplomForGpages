@@ -266,6 +266,28 @@ function migrate(db: Db): Db {
     }
   });
 
+  // Оклад меняет только администратор. В старых демо-данных автор мог быть
+  // записан как HR; приводим такие события к первому администратору.
+  const adminEmployeeIds = new Set(
+    db.users
+      .filter((user) => user.role === 'admin' && user.employeeId)
+      .map((user) => user.employeeId as string),
+  );
+  const fallbackAdminEmployeeId = adminEmployeeIds.values().next().value as
+    | string
+    | undefined;
+  if (fallbackAdminEmployeeId) {
+    db.events.forEach((event) => {
+      if (
+        event.type === 'salary_change' &&
+        (!event.authorId || !adminEmployeeIds.has(event.authorId))
+      ) {
+        event.authorId = fallbackAdminEmployeeId;
+        changed = true;
+      }
+    });
+  }
+
   // Старые демо-базы не знали об остатках отпусков — создаём их для активных.
   const currentYear = new Date().getFullYear();
   let vacationSequence = db.vacationBalances.reduce((max, balance) => {

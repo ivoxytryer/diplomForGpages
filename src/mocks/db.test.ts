@@ -59,6 +59,20 @@ describe('localStorage migration', () => {
     expect(loaded.absences).toHaveLength(before - 1);
   });
 
+  it('исправляет автора изменения оклада в старых демо-данных', () => {
+    const db = createSeed();
+    const salaryEvent = db.events.find((event) => event.type === 'salary_change');
+    expect(salaryEvent).toBeTruthy();
+    salaryEvent!.authorId = 'e002';
+    saveDb(db);
+
+    const loaded = loadDb();
+    const admin = loaded.users.find((user) => user.role === 'admin');
+    expect(loaded.events.find((event) => event.id === salaryEvent!.id)?.authorId).toBe(
+      admin?.employeeId,
+    );
+  });
+
   it('автоматически завершает истёкший испытательный срок', () => {
     const db = createSeed();
     db.employees[0].status = 'probation';

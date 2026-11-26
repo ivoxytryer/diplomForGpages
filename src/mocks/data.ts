@@ -771,7 +771,7 @@ function seedEvents(employees: Employee[], absences: Absence[]): HrEvent[] {
     description: 'Пересмотр оклада по итогам аттестации',
     oldSalary: 160000,
     newSalary: 180000,
-    authorId: 'e002',
+    authorId: 'e011',
   });
   push({
     employeeId: 'e005',
