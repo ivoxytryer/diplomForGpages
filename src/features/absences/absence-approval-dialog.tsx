@@ -88,6 +88,7 @@ export function AbsenceApprovalDialog({
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['timesheet'] });
       queryClient.invalidateQueries({ queryKey: ['audit'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success(isSick ? 'Больничный подтверждён' : 'Отсутствие согласовано');
       onApproved();
       onClose();

@@ -38,9 +38,20 @@ export const eventHandlers = [
     if (month) items = items.filter((item) => String(item.date ?? '').startsWith(month));
     if (type) items = items.filter((item) => item.type === type);
     items.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
-    if (user.role !== 'admin' && user.role !== 'hr') {
-      items = items.map(({ oldSalary: _oldSalary, newSalary: _newSalary, ...event }) => event);
-    }
+    // Оклад своего сотрудника видит он сам; чужие оклады скрываем.
+    items = items.map((event) => {
+      if (
+        user.role === 'admin' ||
+        user.role === 'hr' ||
+        user.employeeId === event.employeeId
+      ) {
+        return event;
+      }
+      const rest = { ...event };
+      delete rest.oldSalary;
+      delete rest.newSalary;
+      return rest;
+    });
     return HttpResponse.json(items);
   }),
 

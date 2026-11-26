@@ -826,6 +826,8 @@ Email должен быть уникален. Если email учётной за
 | `type` | Тип события |
 
 **Ответ `200`** — `HrEvent[]`, сортировка по дате (новые первыми).
+Поля `oldSalary`/`newSalary` видят admin/HR, а также сам сотрудник в своих событиях;
+остальным ролям они не возвращаются. Это используется в истории должностей и окладов.
 
 ### `POST /events`
 
@@ -1138,7 +1140,7 @@ type HrEventType = 'hire' | 'transfer' | 'promotion' | 'dismissal' | 'salary_cha
 | `PATCH /timesheet/{employeeId}/status` | ✓ | ✓ (кроме своего) | ✓ (своё подразделение, кроме своего) | — |
 | `GET/POST/PATCH/DELETE /absences` | ✓ | ✓ | ✓ (своё подразделение) | только свои |
 | `PATCH /absences/{id}/status` | ✓ | ✓ | ✓ (своё подразделение) | — |
-| `GET /events` | ✓ | ✓ | ✓ (просмотр) | — |
+| `GET /events` | ✓ | ✓ | ✓ (просмотр) | ✓ (свои события) |
 | `POST /events` | ✓ | ✓ | — | — |
 | `GET /users`, `PATCH /users/{id}` | ✓ | — | — | — |
 | `POST /users` | ✓ | ✓ (только `employee`) | — | — |

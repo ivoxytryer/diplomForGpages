@@ -82,6 +82,18 @@ test('admin: орг-структура', async ({ page }) => {
   await expect(page.getByText('Отдел разработки', { exact: false }).first()).toBeVisible();
 });
 
+test('admin: история должностей и окладов', async ({ page }) => {
+  await login(page, 'admin@hr.local');
+  await page.goto('/employees/e004');
+
+  await page.getByRole('button', { name: /История/ }).click();
+  await expect(page.getByText('История должностей и окладов')).toBeVisible();
+  await expect(page.getByText('Динамика оклада')).toBeVisible();
+  await expect(
+    page.locator('td').filter({ hasText: 'Изменение оклада' }).first(),
+  ).toBeVisible();
+});
+
 test('admin: создание сотрудника', async ({ page }) => {
   await login(page, 'admin@hr.local');
   await page.goto('/employees');

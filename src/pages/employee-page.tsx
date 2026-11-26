@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -34,6 +34,7 @@ import {
   timesheetStatusMeta,
 } from '@/shared/lib/meta';
 import { isTaskDueToday, isTaskOverdue } from '@/shared/lib/tasks';
+import { buildEmployeeHistory } from '@/shared/lib/employee-history';
 import { getCalendarDay, isRedDay } from '@/shared/lib/calendar';
 import { isAssignmentActive } from '@/shared/lib/workload';
 import {
@@ -52,6 +53,7 @@ import { AbsenceApprovalDialog } from '@/features/absences/absence-approval-dial
 import { EventForm } from '@/features/events/event-form';
 import { CreateUserDialog } from '@/features/users/create-user-dialog';
 import { VacationBalanceDialog } from '@/features/employees/vacation-balance-dialog';
+import { SalaryHistoryChart } from '@/features/employees/salary-history-chart';
 import { TaskForm } from '@/features/tasks/task-form';
 import { TaskList } from '@/features/tasks/task-list';
 import { useTaskActions } from '@/features/tasks/use-task-actions';
@@ -79,6 +81,9 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
   const user = useAuthStore((state) => state.user);
   const managerDepartmentId = useManagerDepartmentId();
   const {
+    departments,
+    positions,
+    employees: lookupEmployees,
     departmentById,
     positionById,
     projectById,
@@ -157,6 +162,23 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
     enabled: Boolean(id) && tab === 'timesheet',
   });
 
+  const employee = employeeQuery.data;
+  const canSeeSalary = Boolean(employee && canViewSalary(user, employee.id));
+  const history = useMemo(
+    () =>
+      employee
+        ? buildEmployeeHistory({
+            events: eventsQuery.data ?? [],
+            employee,
+            departments,
+            positions,
+            employees: lookupEmployees,
+            canViewSalary: canSeeSalary,
+          })
+        : { entries: [], salarySteps: [] },
+    [employee, eventsQuery.data, departments, positions, lookupEmployees, canSeeSalary],
+  );
+
   const statusMutation = useMutation({
     mutationFn: ({ absenceId, status }: { absenceId: string; status: 'approved' | 'rejected' }) =>
       api.absences.setStatus(absenceId, status),
@@ -165,6 +187,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
       queryClient.invalidateQueries({ queryKey: ['vacations'] });
       queryClient.invalidateQueries({ queryKey: ['employee', id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success('Статус заявки обновлён');
     },
     onError: (error) => toast.error('Не удалось обновить статус', getErrorMessage(error)),
@@ -178,8 +201,6 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
     );
   }
   if (user?.role === 'employee' && user.employeeId !== id) return <Navigate to="/me" replace />;
-
-  const employee = employeeQuery.data;
 
   if (employeeQuery.isError) return <ErrorState message={getErrorMessage(employeeQuery.error)} />;
 
@@ -247,7 +268,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
     { value: 'absences', label: 'Отпуска', count: absences.length },
     { value: 'projects', label: 'Проекты', count: assignments.length },
     { value: 'tasks', label: 'Задачи', count: openTasks.length },
-    { value: 'events', label: 'События', count: events.length },
+    { value: 'history', label: 'История', count: events.length },
   ];
 
   const timesheetRow = timesheetQuery.data?.rows[0];
@@ -916,33 +937,106 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
         </Card>
       ) : null}
 
-      {tab === 'events' ? (
+      {tab === 'history' ? (
         <Card className="mt-4">
-          <CardHeader title="История кадровых событий" description={`${events.length} записей`} />
-          <CardContent>
-            {events.length === 0 ? (
-              <EmptyState title="Событий пока нет" />
-            ) : (
-              <div className="relative space-y-4 before:absolute before:inset-y-1 before:left-[7px] before:w-px before:bg-border">
-                {events.map((event) => {
-                  const eventMeta = eventTypeMeta[event.type];
-                  return (
-                    <div key={event.id} className="relative flex gap-3 pl-0">
-                      <span className="relative z-10 mt-1 size-4 shrink-0 rounded-full border-2 border-surface bg-primary" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium text-fg">{event.title}</p>
-                          <Badge tone={eventMeta.tone}>{eventMeta.label}</Badge>
-                          <span className="text-[11px] text-muted">{formatDate(event.date)}</span>
-                        </div>
-                        {event.description ? (
-                          <p className="mt-0.5 text-xs text-muted">{event.description}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
+          <CardHeader
+            title="История должностей и окладов"
+            description={`${history.entries.length} записей`}
+            actions={
+              canManageEvents ? (
+                <Button variant="outline" size="sm" onClick={() => setEventOpen(true)}>
+                  <Plus /> Событие
+                </Button>
+              ) : null
+            }
+          />
+          <CardContent className="pt-3">
+            {canSeeSalary && history.salarySteps.length ? (
+              <div className="mb-5 border-b border-border pb-4">
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
+                    Динамика оклада
+                  </p>
+                  <p className="text-xs font-semibold tabular-nums text-fg">
+                    {formatMoney(employee.salary)}
+                  </p>
+                </div>
+                <SalaryHistoryChart steps={history.salarySteps} />
               </div>
+            ) : null}
+
+            {history.entries.length === 0 ? (
+              <EmptyState
+                title="История пока пуста"
+                description="Кадровые события появятся здесь после приёма, перевода, повышения или изменения оклада."
+              />
+            ) : (
+              <Table>
+                <THead>
+                  <tr>
+                    <TH>Дата</TH>
+                    <TH>Событие</TH>
+                    <TH>Подразделение</TH>
+                    <TH>Должность</TH>
+                    {canSeeSalary ? <TH className="text-right">Оклад</TH> : null}
+                    <TH>Автор</TH>
+                  </tr>
+                </THead>
+                <TBody>
+                  {history.entries.map((entry) => {
+                    const eventMeta = eventTypeMeta[entry.type];
+                    const departmentLabel =
+                      entry.fromDepartmentName &&
+                      entry.toDepartmentName &&
+                      entry.fromDepartmentName !== entry.toDepartmentName
+                        ? `${entry.fromDepartmentName} → ${entry.toDepartmentName}`
+                        : entry.toDepartmentName ?? entry.fromDepartmentName ?? '—';
+                    const positionLabel =
+                      entry.fromPositionName &&
+                      entry.toPositionName &&
+                      entry.fromPositionName !== entry.toPositionName
+                        ? `${entry.fromPositionName} → ${entry.toPositionName}`
+                        : entry.toPositionName ?? entry.fromPositionName ?? '—';
+                    const salaryLabel =
+                      entry.newSalary === null || entry.newSalary === undefined
+                        ? '—'
+                        : entry.oldSalary !== null &&
+                            entry.oldSalary !== undefined &&
+                            entry.oldSalary !== entry.newSalary
+                          ? `${formatMoney(entry.oldSalary)} → ${formatMoney(entry.newSalary)}`
+                          : formatMoney(entry.newSalary);
+
+                    return (
+                      <TR key={entry.id}>
+                        <TD className="whitespace-nowrap text-xs tabular-nums">
+                          {formatDate(entry.date)}
+                        </TD>
+                        <TD className="min-w-[180px]">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs font-medium text-fg">{entry.title}</span>
+                            <Badge tone={eventMeta.tone}>{eventMeta.label}</Badge>
+                          </div>
+                          {entry.description ? (
+                            <p className="mt-0.5 max-w-[360px] text-[11px] leading-4 text-muted">
+                              {entry.description}
+                            </p>
+                          ) : null}
+                        </TD>
+                        <TD className="text-xs text-muted">{departmentLabel}</TD>
+                        <TD className="text-xs text-muted">{positionLabel}</TD>
+                        {canSeeSalary ? (
+                          <TD className="whitespace-nowrap text-right text-xs tabular-nums text-fg">
+                            {salaryLabel}
+                          </TD>
+                        ) : null}
+                        <TD className="whitespace-nowrap text-xs text-muted">
+                          {entry.authorName ?? '—'}
+                        </TD>
+                      </TR>
+                    );
+                  })}
+                </TBody>
+              </Table>
             )}
           </CardContent>
         </Card>

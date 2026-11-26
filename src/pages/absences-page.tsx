@@ -88,6 +88,7 @@ export function AbsencesPage() {
       queryClient.invalidateQueries({ queryKey: ['timesheet'] });
       queryClient.invalidateQueries({ queryKey: ['employee'] });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success('Статус заявки обновлён');
     },
     onError: (error) => toast.error('Не удалось обновить статус', getErrorMessage(error)),

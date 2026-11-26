@@ -1055,6 +1055,24 @@ describe('лента событий и отсутствия', () => {
   });
 });
 
+describe('история должностей и окладов', () => {
+  it('показывает сотруднику свой оклад в событиях, но скрывает чужой', async () => {
+    const employee = await login('employee@hr.local');
+    const ownEvents = asArray(
+      (await call('GET', '/events?employeeId=e004', undefined, employee.token)).data,
+    ) as Array<{ type: string; newSalary?: number }>;
+    const ownSalary = ownEvents.find((event) => event.type === 'salary_change');
+    expect(ownSalary?.newSalary).toBe(180000);
+
+    const manager = await login('manager@hr.local');
+    const foreignEvents = asArray(
+      (await call('GET', '/events?employeeId=e004', undefined, manager.token)).data,
+    ) as Array<{ type: string; newSalary?: number }>;
+    const foreignSalary = foreignEvents.find((event) => event.type === 'salary_change');
+    expect(foreignSalary?.newSalary).toBeUndefined();
+  });
+});
+
 describe('орг-структура', () => {
   const collectIds = (nodes: OrgStructureNode[], result = new Set<string>()) => {
     nodes.forEach((node) => {
