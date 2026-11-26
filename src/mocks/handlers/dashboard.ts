@@ -103,7 +103,11 @@ export const dashboardHandlers = [
 
     const recentEvents = db.events
       .filter((event) => eventEmployeeIds.has(event.employeeId))
-      .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
+      .sort(
+        (a, b) =>
+          String(b.date ?? '').localeCompare(String(a.date ?? '')) ||
+          b.id.localeCompare(a.id, undefined, { numeric: true }),
+      )
       .slice(0, 8);
 
     const data: DashboardData = {

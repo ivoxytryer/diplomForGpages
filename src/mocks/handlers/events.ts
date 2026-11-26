@@ -37,7 +37,11 @@ export const eventHandlers = [
     }
     if (month) items = items.filter((item) => String(item.date ?? '').startsWith(month));
     if (type) items = items.filter((item) => item.type === type);
-    items.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+    items.sort(
+      (a, b) =>
+        String(b.date ?? '').localeCompare(String(a.date ?? '')) ||
+        b.id.localeCompare(a.id, undefined, { numeric: true }),
+    );
     // Оклад своего сотрудника видит он сам; чужие оклады скрываем.
     items = items.map((event) => {
       if (

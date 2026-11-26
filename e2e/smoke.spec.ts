@@ -114,6 +114,13 @@ test('admin: изменение оклада сразу появляется в 
   await expect(dialog).toBeHidden();
   await expect(page.getByText('Смоук: изменение оклада', { exact: true })).toBeVisible();
   await expect(page.getByText('185 000 ₽').first()).toBeVisible();
+
+  // Событие должно сразу попасть в дашборд и ленту событий.
+  await page.goto('/');
+  await expect(page.getByText('Смоук: изменение оклада', { exact: true })).toBeVisible();
+
+  await page.goto('/events');
+  await expect(page.getByText('Смоук: изменение оклада', { exact: true })).toBeVisible();
 });
 
 test('admin: создание сотрудника', async ({ page }) => {

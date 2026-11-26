@@ -49,6 +49,8 @@ export function EventsPage() {
   const query = useQuery({
     queryKey: ['events', 'page', month, type],
     queryFn: () => api.events.list({ month, type: type || undefined }),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const scopedDepartments = useMemo(

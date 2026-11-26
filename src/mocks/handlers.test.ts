@@ -1073,6 +1073,45 @@ describe('история должностей и окладов', () => {
   });
 });
 
+describe('лента кадровых событий', () => {
+  it('сортирует события одного дня от новых к старым', async () => {
+    const admin = await login('admin@hr.local');
+    const date = todayISO();
+    const first = await call(
+      'POST',
+      '/events',
+      {
+        employeeId: 'e004',
+        type: 'salary_change',
+        date,
+        title: 'QA-событие первое',
+        newSalary: 181000,
+      },
+      admin.token,
+    );
+    expect(first.status).toBe(201);
+    const second = await call(
+      'POST',
+      '/events',
+      {
+        employeeId: 'e004',
+        type: 'salary_change',
+        date,
+        title: 'QA-событие второе',
+        newSalary: 182000,
+      },
+      admin.token,
+    );
+    expect(second.status).toBe(201);
+
+    const events = asArray(
+      (await call('GET', `/events?month=${monthKey()}`, undefined, admin.token)).data,
+    ) as Array<{ title: string }>;
+    const titles = events.map((event) => event.title).filter((title) => title.startsWith('QA-событие'));
+    expect(titles[0]).toBe('QA-событие второе');
+  });
+});
+
 describe('орг-структура', () => {
   const collectIds = (nodes: OrgStructureNode[], result = new Set<string>()) => {
     nodes.forEach((node) => {

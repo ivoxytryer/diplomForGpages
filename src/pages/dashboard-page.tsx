@@ -68,6 +68,8 @@ export function DashboardPage() {
   const dashboard = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.dashboard.get(),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   if (user?.role === 'employee') return <Navigate to="/me" replace />;

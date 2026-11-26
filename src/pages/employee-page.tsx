@@ -142,6 +142,8 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
     queryKey: ['events', { employeeId: id }],
     queryFn: () => api.events.list({ employeeId: id }),
     enabled: Boolean(id),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const tasksQuery = useQuery({
