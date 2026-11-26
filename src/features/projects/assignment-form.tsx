@@ -167,6 +167,12 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
       (!values.endDate || values.endDate >= values.startDate),
   );
 
+  const needsReason =
+    isAdmin && projectedLoad > 100 && !values.overloadReason?.trim();
+  const overloadSuffix = needsReason
+    ? ' — заполните причину перегруза'
+    : ' — перегруз разрешён администратору';
+
   const loadHint = !selectedEmployee
     ? null
     : overLimit
@@ -175,16 +181,16 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
         : `Загрузка сейчас ${currentLoad}% · после назначения ${projectedLoad}% · лимит ${loadLimit}%. Свободно ${remaining}%.`
       : isEditing
         ? `Без этого назначения ${currentLoad}% · после изменения ${projectedLoad}%${
-            projectedLoad > 100 ? ' — перегруз разрешён администратору' : ''
+            projectedLoad > 100 ? overloadSuffix : ''
           }`
         : currentLoad >= 100 && !isAdmin
           ? `Сотрудник уже загружен на ${currentLoad}% — свободного времени нет`
-          : currentLoad >= 90
+          : currentLoad >= 90 && !isAdmin
             ? `Загрузка ${currentLoad}% · осталось ${remaining}% · можно дать только небольшую задачу`
             : `Загрузка сейчас: ${currentLoad}% · после назначения: ${projectedLoad}%${
                 projectedLoad > 100
                   ? isAdmin
-                    ? ' — перегруз разрешён администратору'
+                    ? overloadSuffix
                     : ' — перегруз недоступен'
                   : ''
               }`;
@@ -374,6 +380,7 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
             label="Причина перегруза *"
             className="sm:col-span-2"
             hint={`Доступно только администратору, итоговая загрузка до ${ADMIN_LOAD_LIMIT}%`}
+            error={needsReason ? 'Заполните причину, чтобы сохранить' : undefined}
           >
             <Textarea
               value={values.overloadReason ?? ''}
