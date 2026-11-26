@@ -101,13 +101,12 @@ export const dashboardHandlers = [
       (absence) => ids.has(absence.employeeId) && absence.status === 'pending',
     ).length;
 
+    // Лента показывает последние созданные изменения, а не события с самой
+    // поздней датой. Иначе будущий отпуск (например, 10.12) оказывается выше
+    // повышения, которое только что оформили.
     const recentEvents = db.events
       .filter((event) => eventEmployeeIds.has(event.employeeId))
-      .sort(
-        (a, b) =>
-          String(b.date ?? '').localeCompare(String(a.date ?? '')) ||
-          b.id.localeCompare(a.id, undefined, { numeric: true }),
-      )
+      .sort((a, b) => b.id.localeCompare(a.id, undefined, { numeric: true }))
       .slice(0, 8);
 
     const data: DashboardData = {

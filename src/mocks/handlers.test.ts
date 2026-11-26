@@ -1109,6 +1109,48 @@ describe('лента кадровых событий', () => {
     ) as Array<{ title: string }>;
     const titles = events.map((event) => event.title).filter((title) => title.startsWith('QA-событие'));
     expect(titles[0]).toBe('QA-событие второе');
+
+    const dashboard = asItem(
+      (await call('GET', '/dashboard', undefined, admin.token)).data,
+    );
+    expect(asArray(dashboard.recentEvents)[0]).toMatchObject({
+      title: 'QA-событие второе',
+    });
+  });
+
+  it('в ленте выше то событие, которое создали позже, даже если у него более ранняя дата', async () => {
+    const admin = await login('admin@hr.local');
+    await call(
+      'POST',
+      '/events',
+      {
+        employeeId: 'e004',
+        type: 'salary_change',
+        date: '2026-12-31',
+        title: 'QA-будущее событие',
+        newSalary: 183000,
+      },
+      admin.token,
+    );
+    await call(
+      'POST',
+      '/events',
+      {
+        employeeId: 'e004',
+        type: 'salary_change',
+        date: todayISO(),
+        title: 'QA-последнее событие',
+        newSalary: 184000,
+      },
+      admin.token,
+    );
+
+    const dashboard = asItem(
+      (await call('GET', '/dashboard', undefined, admin.token)).data,
+    );
+    expect(asArray(dashboard.recentEvents)[0]).toMatchObject({
+      title: 'QA-последнее событие',
+    });
   });
 });
 
