@@ -1127,8 +1127,8 @@ type HrEventType = 'hire' | 'transfer' | 'promotion' | 'dismissal' | 'salary_cha
 | Эндпоинт | admin | hr | manager | employee |
 | --- | :---: | :---: | :---: | :---: |
 | `POST /auth/login`, `GET /auth/me` | ✓ | ✓ | ✓ | ✓ |
-| `GET /dashboard` | ✓ | ✓ | ✓ (своё подразделение) | — |
-| `GET /employees`, `GET /employees/{id}` | ✓ | ✓ | ✓ (своё подразделение) | только себя |
+| `GET /dashboard` | ✓ | ✓ | ✓ (своя область) | — |
+| `GET /employees`, `GET /employees/{id}` | ✓ | ✓ | ✓ (своя область) | только себя |
 | `POST/PATCH /employees` | ✓ | ✓ | — | — |
 | `DELETE /employees` | ✓ | — | — | — |
 | Поле `salary` в ответах о сотрудниках | ✓ все | ✓ все | ✓ только свой | ✓ только свой |
@@ -1142,11 +1142,11 @@ type HrEventType = 'hire' | 'transfer' | 'promotion' | 'dismissal' | 'salary_cha
 | `POST/PATCH/DELETE /assignments` | ✓ | — | ✓ только для своих проектов | — |
 | `GET /tasks` | ✓ | ✓ | ✓ | только свои |
 | `POST/PATCH/DELETE /tasks` | ✓ | — | ✓ только по своим проектам | `PATCH` только свои `status`/`postpone` |
-| `GET /timesheet` | ✓ | ✓ | ✓ (своё подразделение) | только себя |
+| `GET /timesheet` | ✓ | ✓ | ✓ (своя область) | только себя |
 | `PATCH /timesheet/{employeeId}/{date}` | ✓ (в т.ч. после утверждения) | ✓ | — | — |
-| `PATCH /timesheet/{employeeId}/status` | ✓ | ✓ (кроме своего) | ✓ (своё подразделение, кроме своего) | — |
-| `GET/POST/PATCH/DELETE /absences` | ✓ | ✓ | ✓ (своё подразделение) | только свои |
-| `PATCH /absences/{id}/status` | ✓ | ✓ | ✓ (своё подразделение) | — |
+| `PATCH /timesheet/{employeeId}/status` | ✓ | ✓ (кроме своего) | ✓ (своя зона, кроме своего) | — |
+| `GET/POST/PATCH/DELETE /absences` | ✓ | ✓ | ✓ чтение — своя область; заявки — только свои | только свои |
+| `PATCH /absences/{id}/status` | ✓ | ✓ | ✓ (своя зона) | — |
 | `GET /events` | ✓ | ✓ | ✓ (просмотр) | ✓ (свои события) |
 | `POST /events` | ✓ | ✓ | — | — |
 | `GET /users`, `PATCH /users/{id}` | ✓ | — | — | — |

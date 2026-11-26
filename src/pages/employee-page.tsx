@@ -20,7 +20,7 @@ import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { Absence, HrEventType, ProjectTask } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
+import { useLookups, useManagerApprovalZone } from '@/shared/hooks/use-lookups';
 import { can, canViewSalary } from '@/shared/lib/permissions';
 import {
   absenceStatusDisplay,
@@ -79,7 +79,6 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
   const params = useParams();
   const id = employeeId ?? params.id;
   const user = useAuthStore((state) => state.user);
-  const managerDepartmentId = useManagerDepartmentId();
   const {
     departments,
     positions,
@@ -91,6 +90,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
   } = useLookups();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const approvalZone = useManagerApprovalZone();
 
   const [tab, setTab] = useState('overview');
   const [month, setMonth] = useState(monthKey());
@@ -218,19 +218,15 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
 
   if (!employee) return <ErrorState message="Сотрудник не найден" />;
 
-  if (
-    user?.role === 'manager' &&
-    managerDepartmentId &&
-    employee.departmentId !== managerDepartmentId
-  ) {
-    return <Navigate to="/employees" replace />;
-  }
-
   const canWrite = can(user?.role, 'employees:write');
   const canManageBalance = user?.role === 'admin' || user?.role === 'hr';
   const canCreateAbsence =
     can(user?.role, 'absences:create') && (user?.role === 'admin' || user?.employeeId === id);
   const canApprove = can(user?.role, 'absences:approve');
+  // Руководитель согласует заявки только в своей зоне, даже если карточку
+  // участника своего проекта из другого подразделения он открыть может.
+  const canApproveEmployee =
+    canApprove && (!approvalZone || approvalZone.has(employee.departmentId));
   const canConfirmSick = user?.role === 'admin' || user?.role === 'hr';
   const department = departmentById.get(employee.departmentId);
   const position = positionById.get(employee.positionId);
@@ -762,7 +758,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                   <TH>Дней</TH>
                   <TH>Статус</TH>
                   <TH>Комментарий</TH>
-                  {canApprove ? <TH className="text-right">Действия</TH> : null}
+                  {canApproveEmployee ? <TH className="text-right">Действия</TH> : null}
                 </tr>
               </THead>
               <TBody>
@@ -786,7 +782,7 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
                       </Badge>
                     </TD>
                     <TD className="max-w-[220px] truncate text-xs text-muted">{absence.reason || '—'}</TD>
-                    {canApprove ? (
+                    {canApproveEmployee ? (
                       <TD>
                         {absence.status === 'pending' &&
                         (absence.employeeId !== user?.employeeId || user?.role === 'admin') ? (

@@ -65,6 +65,19 @@ test('роли: разрешённые и запрещённые разделы'
   await expect(page).toHaveURL(/\/me$/);
 });
 
+test('manager: видит команды проектов из других подразделений', async ({ page }) => {
+  await login(page, 'manager@hr.local');
+  await page.goto('/employees');
+
+  await expect(
+    page.getByText('Показаны сотрудники вашей области', { exact: false }),
+  ).toBeVisible();
+
+  // e012 работает в другом подразделении, но входит в проект pr1.
+  await page.getByPlaceholder('ФИО, email').fill('12@company.ru');
+  await expect(page.getByText('12@company.ru', { exact: false }).first()).toBeVisible();
+});
+
 test('admin: орг-структура', async ({ page }) => {
   await login(page, 'admin@hr.local');
   await page.goto('/directory/structure');

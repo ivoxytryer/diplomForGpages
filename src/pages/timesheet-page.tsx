@@ -6,7 +6,7 @@ import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { TimesheetCell, TimesheetCode, TimesheetStatus } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { useDebounced, useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
+import { useDebounced, useLookups, useManagerApprovalZone } from '@/shared/hooks/use-lookups';
 import { can } from '@/shared/lib/permissions';
 import { timesheetCodeMeta, timesheetCodes, timesheetStatusMeta } from '@/shared/lib/meta';
 import {
@@ -44,8 +44,8 @@ interface CellEditorState {
 
 export function TimesheetPage() {
   const user = useAuthStore((state) => state.user);
-  const managerDepartmentId = useManagerDepartmentId();
-  const { employeeById, departmentById, departments } = useLookups();
+  const { employeeById, departmentById, availableDepartments } = useLookups();
+  const approvalZone = useManagerApprovalZone();
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -60,7 +60,15 @@ export function TimesheetPage() {
   const isEmployee = user?.role === 'employee';
   const canEdit = can(user?.role, 'timesheet:edit');
   const canApprove = can(user?.role, 'timesheet:approve');
-  const scopedDepartmentId = managerDepartmentId ?? (departmentId || undefined);
+  // Команды проектов из других подразделений руководитель видит, но табель
+  // утверждает только в своей зоне: своё подразделение, дочерние и руководимые.
+  const canApproveRow = (employeeId: string) => {
+    if (!canApprove) return false;
+    if (!approvalZone) return true;
+    const employee = employeeById.get(employeeId);
+    return Boolean(employee && approvalZone.has(employee.departmentId));
+  };
+  const scopedDepartmentId = departmentId || undefined;
 
   const query = useQuery({
     queryKey: ['timesheet', month, scopedDepartmentId, isEmployee ? user?.employeeId : 'all'],
@@ -138,14 +146,14 @@ export function TimesheetPage() {
       <Card className="mb-3 p-3">
         <div className="flex flex-wrap items-center gap-2">
           <SearchInput value={search} onChange={setSearch} placeholder="Поиск сотрудника…" className="min-w-[220px] flex-1" />
-          {!managerDepartmentId && !isEmployee ? (
+          {!isEmployee ? (
             <Select
               value={departmentId}
               onChange={(event) => setDepartmentId(event.target.value)}
               className="w-auto min-w-[180px]"
             >
               <option value="">Все подразделения</option>
-              {departments.map((department) => (
+              {availableDepartments.map((department) => (
                 <option key={department.id} value={department.id}>
                   {department.name}
                 </option>
@@ -201,12 +209,7 @@ export function TimesheetPage() {
           Свой табель утверждает администратор.
         </div>
       ) : null}
-      {managerDepartmentId ? (
-        <div className="mb-3 flex items-center gap-2 rounded-lg bg-surface-2/60 px-3 py-2 text-xs text-muted">
-          <Info className="size-4 text-primary" />
-          Подразделение: <span className="font-medium text-fg">{departmentById.get(managerDepartmentId)?.name}</span>
-        </div>
-      ) : null}
+
       {rows.some((row) => row.status === 'approved') ? (
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-surface-2/60 px-3 py-2 text-xs text-muted">
           <Info className="size-4 text-muted" />
@@ -322,7 +325,7 @@ export function TimesheetPage() {
                         </div>
                       </td>
                       <td className="border-b border-border px-2 py-1">
-                        {canApprove ? (
+                        {canApproveRow(row.employeeId) ? (
                           <select
                             value={row.status}
                             onChange={(event) =>

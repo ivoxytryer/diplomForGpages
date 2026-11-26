@@ -13,7 +13,7 @@ import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { HrEventType } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
+import { useLookups } from '@/shared/hooks/use-lookups';
 import { can } from '@/shared/lib/permissions';
 import { eventTypeMeta } from '@/shared/lib/meta';
 import { formatDate, fullName, monthKey, monthLabel } from '@/shared/lib/utils';
@@ -36,8 +36,7 @@ const eventTypes: HrEventType[] = [
 
 export function EventsPage() {
   const user = useAuthStore((state) => state.user);
-  const managerDepartmentId = useManagerDepartmentId();
-  const { employees, departments, positions, employeeById } = useLookups();
+  const { departments, positions, employeeById } = useLookups();
 
   const [month, setMonth] = useState(monthKey());
   const [type, setType] = useState<HrEventType | ''>('');
@@ -53,22 +52,9 @@ export function EventsPage() {
     refetchOnWindowFocus: true,
   });
 
-  const scopedDepartments = useMemo(
-    () => departments.filter((department) => !managerDepartmentId || department.id === managerDepartmentId),
-    [departments, managerDepartmentId],
-  );
-
-  const visibleIds = useMemo(() => {
-    if (!managerDepartmentId) return null;
-    return new Set(
-      employees.filter((employee) => employee.departmentId === managerDepartmentId).map((employee) => employee.id),
-    );
-  }, [employees, managerDepartmentId]);
-
   const events = useMemo(() => {
     const term = search.trim().toLowerCase();
     return (query.data ?? []).filter((event) => {
-      if (visibleIds && !visibleIds.has(event.employeeId)) return false;
       if (!term) return true;
       const employee = employeeById.get(event.employeeId);
       return [
@@ -80,7 +66,7 @@ export function EventsPage() {
         .toLowerCase()
         .includes(term);
     });
-  }, [query.data, visibleIds, search, employeeById]);
+  }, [query.data, search, employeeById]);
 
   const stats = {
     total: events.length,
@@ -253,16 +239,7 @@ export function EventsPage() {
             <span>
               Записей: <span className="font-medium text-fg">{events.length}</span>
             </span>
-            {managerDepartmentId ? (
-              <span>
-                Подразделение:{' '}
-                <span className="font-medium text-fg">
-                  {departmentName(managerDepartmentId) ?? '—'}
-                </span>
-              </span>
-            ) : (
-              <span>Подразделений: {scopedDepartments.length}</span>
-            )}
+            <span>Подразделений: {departments.length}</span>
           </div>
         </Card>
       )}

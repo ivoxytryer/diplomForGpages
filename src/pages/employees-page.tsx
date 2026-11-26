@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Pencil, Plus, RotateCcw, Trash2, 
 import { api } from '@/shared/api';
 import type { Employee, EmployeeStatus } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { useDebounced, useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
+import { useDebounced, useLookups } from '@/shared/hooks/use-lookups';
 import { can } from '@/shared/lib/permissions';
 import { employeeStatusMeta } from '@/shared/lib/meta';
 import { formatDate, formatMoney, fullName } from '@/shared/lib/utils';
@@ -21,8 +21,7 @@ type SortBy = 'name' | 'hireDate' | 'salary';
 
 export function EmployeesPage() {
   const user = useAuthStore((state) => state.user);
-  const managerDepartmentId = useManagerDepartmentId();
-  const { departments, positions, projects, departmentById, positionById } = useLookups();
+  const { availableDepartments, positions, projects, departmentById, positionById } = useLookups();
   const [searchParams] = useSearchParams();
   const statusParam = searchParams.get('status');
   const initialStatus =
@@ -47,7 +46,7 @@ export function EmployeesPage() {
   const canWrite = can(user?.role, 'employees:write');
   const canDelete = can(user?.role, 'employees:delete');
   const canSeeAllSalaries = user?.role === 'admin' || user?.role === 'hr';
-  const scopedDepartmentId = managerDepartmentId ?? (departmentId || undefined);
+  const scopedDepartmentId = departmentId || undefined;
 
   useEffect(() => {
     setPage(1);
@@ -134,13 +133,11 @@ export function EmployeesPage() {
         }
       />
 
-      {managerDepartmentId ? (
+      {user?.role === 'manager' ? (
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-surface-2/60 px-3 py-2 text-xs text-muted">
           <Users className="size-4 text-primary" />
-          Показаны сотрудники вашего подразделения:{' '}
-          <span className="font-medium text-fg">
-            {departmentById.get(managerDepartmentId)?.name ?? '—'}
-          </span>
+          Показаны сотрудники вашей области: подразделение, дочерние и команды ваших
+          проектов.
         </div>
       ) : null}
 
@@ -152,21 +149,19 @@ export function EmployeesPage() {
             placeholder="ФИО, email, табельный номер…"
             className="min-w-[220px] flex-1"
           />
-          {!managerDepartmentId ? (
-            <Select
-              value={departmentId}
-              onChange={(event) => setDepartmentId(event.target.value)}
-              className="w-auto min-w-[170px]"
-              aria-label="Подразделение"
-            >
-              <option value="">Все подразделения</option>
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
-                </option>
-              ))}
-            </Select>
-          ) : null}
+          <Select
+            value={departmentId}
+            onChange={(event) => setDepartmentId(event.target.value)}
+            className="w-auto min-w-[170px]"
+            aria-label="Подразделение"
+          >
+            <option value="">Все подразделения</option>
+            {availableDepartments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </Select>
           <Select
             value={positionId}
             onChange={(event) => setPositionId(event.target.value)}

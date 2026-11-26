@@ -6,7 +6,7 @@ import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { Assignment } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
+import { useLookups } from '@/shared/hooks/use-lookups';
 import { can } from '@/shared/lib/permissions';
 import { projectStatusMeta } from '@/shared/lib/meta';
 import { cn, fullName, todayISO } from '@/shared/lib/utils';
@@ -24,8 +24,7 @@ interface EditorState {
 
 export function WorkloadPage() {
   const user = useAuthStore((state) => state.user);
-  const managerDepartmentId = useManagerDepartmentId();
-  const { employees, projects, projectById, departmentById, departments } = useLookups();
+  const { employees, projects, projectById, departmentById, availableDepartments } = useLookups();
   const [departmentId, setDepartmentId] = useState('');
   const [search, setSearch] = useState('');
   const [showOnlyAssigned, setShowOnlyAssigned] = useState(false);
@@ -36,7 +35,7 @@ export function WorkloadPage() {
   const canEditProject = (projectId: string) =>
     canManageTeam &&
     (user?.role !== 'manager' || projectById.get(projectId)?.managerId === user?.employeeId);
-  const scopedDepartmentId = managerDepartmentId ?? (departmentId || undefined);
+  const scopedDepartmentId = departmentId || undefined;
   const today = todayISO();
 
   const assignmentsQuery = useQuery({
@@ -149,20 +148,18 @@ export function WorkloadPage() {
               placeholder="Поиск сотрудника…"
               className="min-w-[220px] flex-1"
             />
-            {!managerDepartmentId ? (
-              <Select
-                value={departmentId}
-                onChange={(event) => setDepartmentId(event.target.value)}
-                className="w-auto min-w-[180px]"
-              >
-                <option value="">Все подразделения</option>
-                {departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </Select>
-            ) : null}
+            <Select
+              value={departmentId}
+              onChange={(event) => setDepartmentId(event.target.value)}
+              className="w-auto min-w-[180px]"
+            >
+              <option value="">Все подразделения</option>
+              {availableDepartments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </Select>
             <label className="flex items-center gap-2 text-xs text-muted">
               <input
                 type="checkbox"

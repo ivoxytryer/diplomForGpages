@@ -16,7 +16,7 @@ import { getErrorMessage } from '@/shared/api/client';
 import type { CellValue } from '@/shared/lib/export';
 import { exportExcel, printDocument, todayStamp } from '@/shared/lib/export';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
+import { useLookups } from '@/shared/hooks/use-lookups';
 import {
   eventTypeMeta,
   projectStatusMeta,
@@ -96,8 +96,7 @@ const reportMeta: Record<ReportKey, { label: string; description: string; icon: 
 
 export function ReportsPage() {
   const user = useAuthStore((state) => state.user);
-  const managerDepartmentId = useManagerDepartmentId();
-  const { employees, positions, departments, departmentById, employeeById, projectById, projects } = useLookups();
+  const { employees, positions, departments, availableDepartments, departmentById, employeeById, projectById, projects } = useLookups();
   const toast = useToast();
   const [searchParams] = useSearchParams();
   const requestedReport = searchParams.get('report');
@@ -112,7 +111,7 @@ export function ReportsPage() {
   const [projectFilter, setProjectFilter] = useState(searchParams.get('project') ?? '');
 
   const canSeeSalaries = user?.role === 'admin' || user?.role === 'hr';
-  const scopedDepartmentId = managerDepartmentId ?? (departmentId || undefined);
+  const scopedDepartmentId = departmentId || undefined;
   const monthDependent = report === 'timesheet' || report === 'movement';
 
   const timesheetQuery = useQuery({
@@ -738,24 +737,18 @@ export function ReportsPage() {
               </option>
             ))}
           </Select>
-          {!managerDepartmentId ? (
-            <Select
-              value={departmentId}
-              onChange={(event) => setDepartmentId(event.target.value)}
-              className="w-auto min-w-[190px]"
-            >
-              <option value="">Все подразделения</option>
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
-                </option>
-              ))}
-            </Select>
-          ) : (
-            <Badge tone="info">
-              Подразделение: {departmentById.get(managerDepartmentId)?.name ?? '—'}
-            </Badge>
-          )}
+          <Select
+            value={departmentId}
+            onChange={(event) => setDepartmentId(event.target.value)}
+            className="w-auto min-w-[190px]"
+          >
+            <option value="">Все подразделения</option>
+            {availableDepartments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </Select>
           {report === 'projectTeams' ? (
             <Select
               value={projectFilter}

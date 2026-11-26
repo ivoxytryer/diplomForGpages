@@ -7,7 +7,7 @@ import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { Absence, AbsenceStatus } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { useDebounced, useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
+import { useDebounced, useLookups, useManagerApprovalZone } from '@/shared/hooks/use-lookups';
 import { can } from '@/shared/lib/permissions';
 import { absenceStatusDisplay, absenceTypeMeta } from '@/shared/lib/meta';
 import {
@@ -42,8 +42,8 @@ const absenceChipTone: Record<string, string> = {
 
 export function AbsencesPage() {
   const user = useAuthStore((state) => state.user);
-  const managerDepartmentId = useManagerDepartmentId();
-  const { employees, employeeById, departmentById, departments } = useLookups();
+  const { employees, employeeById, departmentById, availableDepartments } = useLookups();
+  const approvalZone = useManagerApprovalZone();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -65,9 +65,16 @@ export function AbsencesPage() {
 
   const isEmployee = user?.role === 'employee';
   const canApprove = can(user?.role, 'absences:approve');
+  // Руководитель видит и команды своих проектов, но согласует только свою зону.
+  const canApproveAbsence = (absence: Absence) => {
+    if (!canApprove) return false;
+    if (!approvalZone) return true;
+    const employee = employeeById.get(absence.employeeId);
+    return Boolean(employee && approvalZone.has(employee.departmentId));
+  };
   const canConfirmSick = user?.role === 'admin' || user?.role === 'hr';
   const canCreateAbsence = can(user?.role, 'absences:create');
-  const scopedDepartmentId = managerDepartmentId ?? (departmentId || undefined);
+  const scopedDepartmentId = departmentId || undefined;
 
   const query = useQuery({
     queryKey: ['absences', allMonths ? 'all' : month, status, isEmployee ? user?.employeeId : 'all'],
@@ -100,7 +107,9 @@ export function AbsencesPage() {
 
   const visibleEmployees = useMemo(() => {
     if (isEmployee) return employees.filter((employee) => employee.id === user?.employeeId);
-    if (scopedDepartmentId) return employees.filter((employee) => employee.departmentId === scopedDepartmentId);
+    if (scopedDepartmentId) {
+      return employees.filter((employee) => employee.departmentId === scopedDepartmentId);
+    }
     return employees;
   }, [isEmployee, employees, scopedDepartmentId, user?.employeeId]);
 
@@ -220,14 +229,14 @@ export function AbsencesPage() {
             <option value="approved">Согласовано</option>
             <option value="rejected">Отклонено</option>
           </Select>
-          {!managerDepartmentId && !isEmployee ? (
+          {!isEmployee ? (
             <Select
               value={departmentId}
               onChange={(event) => setDepartmentId(event.target.value)}
               className="w-auto min-w-[170px]"
             >
               <option value="">Все подразделения</option>
-              {departments.map((department) => (
+              {availableDepartments.map((department) => (
                 <option key={department.id} value={department.id}>
                   {department.name}
                 </option>
@@ -297,7 +306,8 @@ export function AbsencesPage() {
                       <TD className="max-w-[240px] truncate text-xs text-muted">{absence.reason || '—'}</TD>
                       {canApprove ? (
                         <TD>
-                          {absence.status === 'pending' &&
+                          {canApproveAbsence(absence) &&
+                          absence.status === 'pending' &&
                           (absence.employeeId !== user?.employeeId || user?.role === 'admin') ? (
                             <div className="flex justify-end gap-1">
                               {absence.type === 'sick' ? (
@@ -333,7 +343,8 @@ export function AbsencesPage() {
                               )}
                             </div>
                           ) : null}
-                          {absence.status === 'approved' &&
+                          {canApproveAbsence(absence) &&
+                          absence.status === 'approved' &&
                           absence.type !== 'sick' &&
                           (absence.employeeId !== user?.employeeId || user?.role === 'admin') ? (
                             <div className="flex justify-end gap-1">

@@ -5,7 +5,7 @@ import { ArrowRight, Search, Users } from 'lucide-react';
 import { api } from '@/shared/api';
 import { navForRole } from '@/app/navigation';
 import { useAuthStore } from '@/features/auth/auth-store';
-import { useDebounced, useLookups, useManagerDepartmentId } from '@/shared/hooks/use-lookups';
+import { useDebounced, useLookups } from '@/shared/hooks/use-lookups';
 import { Dialog } from '@/shared/ui/overlay';
 import { Avatar, Spinner } from '@/shared/ui/primitives';
 import { fullName } from '@/shared/lib/utils';
@@ -16,16 +16,14 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const navigate = useNavigate();
   const [term, setTerm] = useState('');
   const debounced = useDebounced(term, 250);
-  const managerDepartmentId = useManagerDepartmentId();
   const { departmentById, positionById } = useLookups();
 
   const employeesQuery = useQuery({
-    queryKey: ['command-employees', debounced, managerDepartmentId],
+    queryKey: ['command-employees', debounced],
     queryFn: () =>
       api.employees.list({
         search: debounced,
         pageSize: 8,
-        departmentId: managerDepartmentId,
       }),
     enabled: open && debounced.trim().length >= 2 && user?.role !== 'employee',
   });

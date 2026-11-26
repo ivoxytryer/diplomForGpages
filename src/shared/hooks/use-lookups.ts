@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/shared/api';
 import type { Department, Employee, Position, Project } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
+import { managerZoneDepartmentIds } from '@/shared/lib/manager-zone';
 
 export function useDebounced<T>(value: T, delay = 300) {
   const [debounced, setDebounced] = useState(value);
@@ -22,6 +23,7 @@ function asArray<T>(value: unknown): T[] {
 }
 
 export function useLookups() {
+  const user = useAuthStore((state) => state.user);
   const departmentsQuery = useQuery({ queryKey: ['departments'], queryFn: api.departments.list });
   const positionsQuery = useQuery({ queryKey: ['positions'], queryFn: api.positions.list });
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: api.projects.list });
@@ -47,6 +49,17 @@ export function useLookups() {
     [employeesQuery.data],
   );
 
+  /**
+   * Список подразделений для фильтров. Менеджеру показываем только те отделы,
+   * в которых есть доступные ему сотрудники (своя область и команды проектов),
+   * чтобы выбор чужого отдела не давал пустой экран.
+   */
+  const availableDepartments = useMemo<Department[]>(() => {
+    if (user?.role !== 'manager') return departments;
+    const used = new Set(employees.map((employee) => employee.departmentId));
+    return departments.filter((department) => used.has(department.id));
+  }, [departments, employees, user?.role]);
+
   const maps = useMemo(
     () => ({
       departmentById: new Map(departments.map((item) => [item.id, item])),
@@ -59,6 +72,7 @@ export function useLookups() {
 
   return {
     departments,
+    availableDepartments,
     positions,
     projects,
     employees,
@@ -71,9 +85,20 @@ export function useLookups() {
   };
 }
 
-export function useManagerDepartmentId() {
+/**
+ * Подразделения, где текущий руководитель согласует табель и отсутствия.
+ * `null` — не руководитель (ограничение не применяется). Команды проектов
+ * из других подразделений в эту зону не входят: там решение принимает
+ * руководитель подразделения или HR.
+ */
+export function useManagerApprovalZone() {
   const user = useAuthStore((state) => state.user);
-  const { employeeById } = useLookups();
-  if (user?.role !== 'manager' || !user.employeeId) return undefined;
-  return employeeById.get(user.employeeId)?.departmentId;
+  const { departments, employeeById } = useLookups();
+  return useMemo(() => {
+    if (user?.role !== 'manager') return null;
+    const ownDepartmentId = user.employeeId
+      ? employeeById.get(user.employeeId)?.departmentId
+      : null;
+    return managerZoneDepartmentIds(departments, ownDepartmentId, user.employeeId);
+  }, [departments, employeeById, user?.employeeId, user?.role]);
 }

@@ -1092,6 +1092,54 @@ describe('команда проектов', () => {
   });
 });
 
+describe('область руководителя', () => {
+  it('список, табель и отсутствия покрывают команды проектов и совпадают с дашбордом', async () => {
+    const manager = await login('manager@hr.local');
+
+    const page = (await call('GET', '/employees?pageSize=500', undefined, manager.token))
+      .data as { items: Record<string, unknown>[] };
+    const ids = new Set(page.items.map((item) => item.id as string));
+
+    // e012 из другого подразделения, но входит в команду проекта pr1.
+    expect(ids.has('e012')).toBe(true);
+    // e008 не входит ни в область подразделений, ни в команду проектов.
+    expect(ids.has('e008')).toBe(false);
+
+    const active = page.items.filter((item) => item.status !== 'dismissed');
+    const dashboard = asItem((await call('GET', '/dashboard', undefined, manager.token)).data);
+    expect(dashboard.headcount).toBe(active.length);
+
+    const sheet = asItem(
+      (await call('GET', `/timesheet?month=${monthKey()}`, undefined, manager.token)).data,
+    );
+    expect(asArray(sheet.rows).some((row) => row.employeeId === 'e012')).toBe(true);
+
+    const absences = asArray((await call('GET', '/absences', undefined, manager.token)).data);
+    expect(absences.some((absence) => absence.employeeId === 'e012')).toBe(true);
+  });
+
+  it('команду проекта из другого подразделения видит, но не согласует', async () => {
+    const admin = await login('admin@hr.local');
+    const manager = await login('manager@hr.local');
+    const start = dayjs().add(5, 'month').startOf('month').add(9, 'day').format('YYYY-MM-DD');
+
+    const created = await call(
+      'POST',
+      '/absences',
+      { employeeId: 'e012', type: 'vacation', startDate: start, endDate: start },
+      admin.token,
+    );
+    expect(created.status).toBe(201);
+    const id = asItem(created.data).id as string;
+
+    const list = asArray((await call('GET', '/absences', undefined, manager.token)).data);
+    expect(list.some((absence) => absence.id === id)).toBe(true);
+    expect(
+      (await call('PATCH', `/absences/${id}/status`, { status: 'approved' }, manager.token)).status,
+    ).toBe(403);
+  });
+});
+
 describe('лента кадровых событий', () => {
   it('сортирует события одного дня от новых к старым', async () => {
     const admin = await login('admin@hr.local');
