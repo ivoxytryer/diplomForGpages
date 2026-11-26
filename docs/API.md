@@ -440,6 +440,10 @@ Email должен быть уникален. Если email учётной за
 
 **Ответ `200`** — `Assignment[]`.
 
+Состав команды меняют `admin` и `manager` своих проектов. HR видит назначения,
+но не добавляет и не убирает участников: создание проекта и выбор руководителя —
+его зона, дальше командой управляет менеджер.
+
 ### `POST /assignments` → `201`, тело `AssignmentPayload`
 ### `PATCH /assignments/{id}` → `200`
 ### `DELETE /assignments/{id}` → `{ "ok": true }`
@@ -1135,7 +1139,7 @@ type HrEventType = 'hire' | 'transfer' | 'promotion' | 'dismissal' | 'salary_cha
 | `POST /projects` | ✓ | ✓ | ✓ (только с собой руководителем) | — |
 | `PATCH /projects/{id}` | ✓ любой | ✓ любой | ✓ только свой проект; может передать руководителя | — |
 | `DELETE /projects/{id}` | ✓ | ✓ | — | — |
-| `POST/PATCH/DELETE /assignments` | ✓ | ✓ | ✓ только для своих проектов | — |
+| `POST/PATCH/DELETE /assignments` | ✓ | — | ✓ только для своих проектов | — |
 | `GET /tasks` | ✓ | ✓ | ✓ | только свои |
 | `POST/PATCH/DELETE /tasks` | ✓ | — | ✓ только по своим проектам | `PATCH` только свои `status`/`postpone` |
 | `GET /timesheet` | ✓ | ✓ | ✓ (своё подразделение) | только себя |

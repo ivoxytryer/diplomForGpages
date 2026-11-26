@@ -1073,6 +1073,25 @@ describe('история должностей и окладов', () => {
   });
 });
 
+describe('команда проектов', () => {
+  it('HR не добавляет сотрудников в проект', async () => {
+    const hr = await login('hr@hr.local');
+    const response = await call(
+      'POST',
+      '/assignments',
+      {
+        projectId: 'pr1',
+        employeeId: 'e009',
+        projectRole: 'Участник',
+        allocation: 10,
+        startDate: todayISO(),
+      },
+      hr.token,
+    );
+    expect(response.status).toBe(403);
+  });
+});
+
 describe('лента кадровых событий', () => {
   it('сортирует события одного дня от новых к старым', async () => {
     const admin = await login('admin@hr.local');

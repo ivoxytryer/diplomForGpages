@@ -32,7 +32,10 @@ export function WorkloadPage() {
   const [editor, setEditor] = useState<EditorState | null>(null);
 
   const isEmployee = user?.role === 'employee';
-  const canWrite = can(user?.role, 'projects:write');
+  const canManageTeam = can(user?.role, 'projects:manage-team');
+  const canEditProject = (projectId: string) =>
+    canManageTeam &&
+    (user?.role !== 'manager' || projectById.get(projectId)?.managerId === user?.employeeId);
   const scopedDepartmentId = managerDepartmentId ?? (departmentId || undefined);
   const today = todayISO();
 
@@ -244,16 +247,17 @@ export function WorkloadPage() {
                     {visibleProjects.map((project) => {
                       const assignment = assignmentByKey.get(`${employee.id}|${project.id}`);
                       const value = assignment?.allocation ?? 0;
+                      const editable = canEditProject(project.id);
                       return (
                         <td key={project.id} className="border-b border-border p-0.5 text-center">
                           <button
                             type="button"
-                            disabled={!canWrite}
+                            disabled={!editable}
                             onClick={() => setEditor({ employeeId: employee.id, projectId: project.id, assignment })}
                             className={cn(
                               'flex h-8 w-full items-center justify-center rounded text-[11px] font-semibold transition',
                               value > 0 ? 'bg-zinc-500/10 text-fg' : 'text-muted/60',
-                              canWrite ? 'hover:ring-2 hover:ring-primary/30' : 'cursor-default',
+                              editable ? 'hover:ring-2 hover:ring-primary/30' : 'cursor-default',
                             )}
                             title={
                               assignment

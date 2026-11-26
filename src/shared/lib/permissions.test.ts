@@ -23,6 +23,8 @@ describe('can', () => {
     expect(can('manager', 'timesheet:edit')).toBe(false);
     expect(can('manager', 'timesheet:approve')).toBe(true);
     expect(can('manager', 'projects:manage-manager')).toBe(true);
+    expect(can('hr', 'projects:manage-team')).toBe(false);
+    expect(can('manager', 'projects:manage-team')).toBe(true);
     expect(can('admin', 'salary:write')).toBe(true);
   });
 

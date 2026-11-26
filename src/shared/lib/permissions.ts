@@ -62,7 +62,6 @@ const access: Record<Role, Action[]> = {
     'events:write',
     'projects:write',
     'projects:delete',
-    'projects:manage-team',
     'projects:manage-manager',
     'tasks:read',
     'reports:read',

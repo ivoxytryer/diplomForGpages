@@ -123,6 +123,16 @@ test('admin: изменение оклада сразу появляется в 
   await expect(page.getByText('Смоук: изменение оклада', { exact: true })).toBeVisible();
 });
 
+test('hr: матрица загрузки без редактирования команды', async ({ page }) => {
+  await login(page, 'hr@hr.local');
+  await page.goto('/workload');
+  await expect(page.getByRole('heading', { name: 'Матрица загрузки' })).toBeVisible();
+
+  const cell = page.locator('button[title*="не назначен"]').first();
+  await expect(cell).toBeVisible();
+  await expect(cell).toBeDisabled();
+});
+
 test('admin: создание сотрудника', async ({ page }) => {
   await login(page, 'admin@hr.local');
   await page.goto('/employees');
