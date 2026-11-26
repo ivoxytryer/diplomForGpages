@@ -78,6 +78,38 @@ test('manager: видит команды проектов из других по
   await expect(page.getByText('12@company.ru', { exact: false }).first()).toBeVisible();
 });
 
+test('manager: перегруз не подрезает проценты при редактировании', async ({ page }) => {
+  const employee = 'Лебедева Полина Андреевна';
+
+  // Администратор создаёт назначение, из-за которого загрузка становится 110%.
+  await login(page, 'admin@hr.local');
+  await page.goto('/workload');
+  const adminRow = page.getByRole('row', { name: new RegExp(employee) }).first();
+  await adminRow.getByTitle(/ERP-системы · не назначен/).click();
+  const adminDialog = page.getByRole('dialog');
+  await adminDialog.getByLabel('Загрузка, %').fill('50');
+  await adminDialog.getByLabel('Причина перегруза *').fill('Проверка перегруза');
+  await adminDialog.getByRole('button', { name: 'Сохранить' }).click();
+  await expect(adminDialog).toBeHidden();
+
+  // Руководитель открывает это назначение: форма показывает фактические 50%,
+  // а не свободные 40%, и предупреждает о превышении лимита.
+  await logout(page);
+  await login(page, 'manager@hr.local');
+  await page.goto('/workload');
+  const managerRow = page.getByRole('row', { name: new RegExp(employee) }).first();
+  await managerRow.getByTitle(/ERP-системы · .* · 50%/).click();
+  const dialog = page.getByRole('dialog');
+
+  await expect(dialog.getByLabel('Загрузка, %')).toHaveValue('50');
+  await expect(dialog.getByText(/лимит 100%/)).toBeVisible();
+  await expect(dialog.getByText(/Уменьшите до 40% или меньше/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Сохранить' })).toBeDisabled();
+
+  await dialog.getByLabel('Загрузка, %').fill('40');
+  await expect(dialog.getByRole('button', { name: 'Сохранить' })).toBeEnabled();
+});
+
 test('admin: орг-структура', async ({ page }) => {
   await login(page, 'admin@hr.local');
   await page.goto('/directory/structure');

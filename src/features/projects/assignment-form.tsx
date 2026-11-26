@@ -110,18 +110,14 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
   const currentLoad = selectedEmployee ? (loads.get(selectedEmployee.id) ?? 0) : 0;
   const allocation = Number(values.allocation) || 0;
   const projectedLoad = currentLoad + allocation;
-  const remaining = remainingCapacity(currentLoad);
   const loadLimit = isAdmin ? ADMIN_LOAD_LIMIT : 100;
-
-  const selectedEmployeeId = selectedEmployee?.id;
-  useEffect(() => {
-    if (!selectedEmployeeId || isAdmin) return;
-    setValues((previous) =>
-      previous.allocation > remaining
-        ? { ...previous, allocation: remaining }
-        : previous,
-    );
-  }, [selectedEmployeeId, remaining, isAdmin]);
+  const remaining = remainingCapacity(currentLoad, loadLimit);
+  const isEditing = Boolean(assignment);
+  // Значение не подрезаем автоматически: при открытии существующего назначения
+  // форма должна показывать фактические проценты и предупреждать о перегрузе.
+  // Иначе правка роли или дат молча уменьшает назначение. Сохранение сверх
+  // лимита блокирует `valid`.
+  const overLimit = projectedLoad > loadLimit;
 
   useEffect(() => {
     if (!values.employeeId || fixedEmployee) return;
@@ -170,6 +166,28 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
       (projectedLoad <= 100 || (isAdmin && Boolean(values.overloadReason?.trim()))) &&
       (!values.endDate || values.endDate >= values.startDate),
   );
+
+  const loadHint = !selectedEmployee
+    ? null
+    : overLimit
+      ? isEditing
+        ? `Без этого назначения ${currentLoad}% · с текущим значением ${projectedLoad}% · лимит ${loadLimit}%. Уменьшите до ${remaining}% или меньше, чтобы сохранить.`
+        : `Загрузка сейчас ${currentLoad}% · после назначения ${projectedLoad}% · лимит ${loadLimit}%. Свободно ${remaining}%.`
+      : isEditing
+        ? `Без этого назначения ${currentLoad}% · после изменения ${projectedLoad}%${
+            projectedLoad > 100 ? ' — перегруз разрешён администратору' : ''
+          }`
+        : currentLoad >= 100 && !isAdmin
+          ? `Сотрудник уже загружен на ${currentLoad}% — свободного времени нет`
+          : currentLoad >= 90
+            ? `Загрузка ${currentLoad}% · осталось ${remaining}% · можно дать только небольшую задачу`
+            : `Загрузка сейчас: ${currentLoad}% · после назначения: ${projectedLoad}%${
+                projectedLoad > 100
+                  ? isAdmin
+                    ? ' — перегруз разрешён администратору'
+                    : ' — перегруз недоступен'
+                  : ''
+              }`;
 
   return (
     <Dialog
@@ -281,24 +299,16 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
               })}
             </Select>
           )}
-          {selectedEmployee ? (
+          {loadHint ? (
             <p
               className={cn(
                 'mt-1 text-[11px]',
-                currentLoad >= 100 || projectedLoad > 100
+                overLimit || (currentLoad >= 100 && !isAdmin)
                   ? 'font-medium text-danger'
                   : 'text-muted',
               )}
             >
-              {currentLoad >= 100 && !isAdmin
-                ? `Сотрудник уже загружен на ${currentLoad}% — свободного времени нет`
-                : currentLoad >= 90
-                  ? `Загрузка ${currentLoad}% · осталось ${remaining}% · можно дать только небольшую задачу`
-                  : `Загрузка сейчас: ${currentLoad}% · после назначения: ${projectedLoad}%${
-                      projectedLoad > 100
-                        ? ` — перегруз (${isAdmin ? 'разрешено администратору' : 'недоступно'})`
-                        : ''
-                    }`}
+              {loadHint}
             </p>
           ) : null}
           {selectedAbsence ? (
@@ -321,14 +331,16 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
           label="Загрузка, %"
           hint={
             selectedEmployee
-              ? `Свободно ${remaining}% · максимум ${isAdmin ? ADMIN_LOAD_LIMIT : remaining}%`
+              ? isAdmin
+                ? `Свободно ${remaining}% · лимит перегруза ${ADMIN_LOAD_LIMIT}%`
+                : `Свободно ${remaining}% · можно сохранить до ${remaining}%`
               : 'От 0 до 100'
           }
         >
           <Input
             type="number"
             min={0}
-            max={isAdmin ? 100 : Math.max(0, Math.min(100, remaining))}
+            max={100}
             step={5}
             value={values.allocation}
             onChange={(event) =>
@@ -357,15 +369,11 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
             onChange={(event) => setValues((prev) => ({ ...prev, endDate: event.target.value || null }))}
           />
         </Field>
-        {projectedLoad > 100 ? (
+        {projectedLoad > 100 && isAdmin ? (
           <Field
             label="Причина перегруза *"
             className="sm:col-span-2"
-            hint={
-              isAdmin
-                ? `Доступно только администратору, итоговая загрузка до ${ADMIN_LOAD_LIMIT}%`
-                : 'Превышать 100% может только администратор'
-            }
+            hint={`Доступно только администратору, итоговая загрузка до ${ADMIN_LOAD_LIMIT}%`}
           >
             <Textarea
               value={values.overloadReason ?? ''}
