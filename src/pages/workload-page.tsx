@@ -280,7 +280,7 @@ export function WorkloadPage() {
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="sticky bottom-0 bg-surface-2">
+              <tfoot className="bg-surface-2">
                 <tr>
                   <td className="sticky left-0 z-10 border-t border-border bg-surface-2 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
                     Загрузка по проекту
