@@ -22,6 +22,7 @@ import type { Absence, HrEventType, ProjectTask } from '@/shared/types';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { useLookups, useManagerApprovalZone } from '@/shared/hooks/use-lookups';
 import { can, canViewSalary } from '@/shared/lib/permissions';
+import { POSITION_GRADE_LABELS } from '@/shared/lib/enums';
 import {
   absenceStatusDisplay,
   absenceTypeMeta,
@@ -419,6 +420,14 @@ export function EmployeePage({ employeeId }: { employeeId?: string } = {}) {
               <CardContent className="py-2">
                 <InfoRow label="Подразделение" value={department?.name ?? '—'} />
                 <InfoRow label="Должность" value={position?.name ?? '—'} />
+                <InfoRow
+                  label="Грейд"
+                  value={
+                    position
+                      ? `${position.grade} · ${POSITION_GRADE_LABELS[position.grade] ?? '—'}`
+                      : '—'
+                  }
+                />
                 <InfoRow label="Руководитель" value={managerLabel} />
                 <InfoRow label="Дата приёма" value={formatDate(employee.hireDate)} />
                 <InfoRow label="Тип занятости" value={employmentTypeLabels[employee.employmentType]} />
