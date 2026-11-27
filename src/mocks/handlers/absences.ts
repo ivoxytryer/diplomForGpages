@@ -34,7 +34,15 @@ export const absenceHandlers = [
       );
     }
     items.sort((a, b) => String(b.startDate ?? '').localeCompare(String(a.startDate ?? '')));
-    return HttpResponse.json(items);
+    // Флаг нужен для массового согласования: заявки с активными задачами
+    // требуют решения по каждой задаче и согласуются по одной.
+    const withFlags = items.map((item) => ({
+      ...item,
+      hasActiveTasks: db.projectTasks.some(
+        (task) => task.employeeId === item.employeeId && task.status === 'todo',
+      ),
+    }));
+    return HttpResponse.json(withFlags);
   }),
 
   http.get(`${BASE}/absences/:id/task-handover`, ({ params, request }) => {

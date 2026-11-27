@@ -57,6 +57,39 @@ export function calculateLoad(
     .reduce((sum, assignment) => sum + assignment.allocation, 0);
 }
 
+/**
+ * Пик активной загрузки сотрудника за период назначения.
+ * Проверяются дата старта и все пересекающиеся старты других назначений —
+ * так же, как на сервере. Иначе форма пропустит перегруз, который появится
+ * позже, когда начнётся другое назначение.
+ */
+export function calculatePeakLoad(
+  assignments: Assignment[],
+  projects: ProjectLookup,
+  employeeId: string,
+  startDate: string,
+  endDate: string | null | undefined,
+  excludeAssignmentId?: string,
+) {
+  const rangeEnd = endDate ?? '9999-12-31';
+  const dates = new Set<string>([startDate]);
+
+  assignments.forEach((assignment) => {
+    if (assignment.employeeId !== employeeId) return;
+    if (assignment.id === excludeAssignmentId) return;
+    if (assignment.startDate > startDate && assignment.startDate <= rangeEnd) {
+      dates.add(assignment.startDate);
+    }
+  });
+
+  let peak = 0;
+  dates.forEach((date) => {
+    const load = calculateLoad(assignments, projects, employeeId, date, excludeAssignmentId);
+    if (load > peak) peak = load;
+  });
+  return peak;
+}
+
 export function remainingCapacity(load: number, limit = LOAD_LIMIT) {
   return Math.max(0, limit - load);
 }

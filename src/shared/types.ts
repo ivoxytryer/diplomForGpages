@@ -230,6 +230,8 @@ export interface Absence {
   /** Больничный подтверждён HR/администратором. */
   confirmedAt?: string | null;
   confirmedBy?: string | null;
+  /** Есть открытые задачи: при согласовании нужно решить, оставить или передать. */
+  hasActiveTasks?: boolean;
 }
 
 export type HrEventType =

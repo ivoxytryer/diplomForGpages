@@ -1,4 +1,4 @@
-import { ADMIN_LOAD_LIMIT, calculateLoad } from '@/shared/lib/workload';
+import { ADMIN_LOAD_LIMIT, calculateLoad, calculatePeakLoad } from '@/shared/lib/workload';
 import type { Db, User } from '@/shared/types';
 
 export function assignmentLoadAt(
@@ -12,11 +12,7 @@ export function assignmentLoadAt(
 
 /**
  * Максимальная загрузка сотрудника на всём периоде назначения.
- *
- * Загрузка меняется только в даты старта назначений (в даты окончания она
- * уменьшается), поэтому достаточно проверить старт нового периода и старты
- * всех пересекающихся назначений. Это ловит перегруз, который проявится
- * не сегодня, а через месяц.
+ * Расчёт общий с фронтендом — см. `calculatePeakLoad`.
  */
 export function assignmentPeakLoad(
   db: Db,
@@ -25,23 +21,14 @@ export function assignmentPeakLoad(
   endDate: string | null | undefined,
   excludeAssignmentId?: string,
 ) {
-  const rangeEnd = endDate ?? '9999-12-31';
-  const dates = new Set<string>([startDate]);
-
-  db.assignments.forEach((assignment) => {
-    if (assignment.employeeId !== employeeId) return;
-    if (assignment.id === excludeAssignmentId) return;
-    if (assignment.startDate > startDate && assignment.startDate <= rangeEnd) {
-      dates.add(assignment.startDate);
-    }
-  });
-
-  let peak = 0;
-  dates.forEach((date) => {
-    const load = assignmentLoadAt(db, employeeId, date, excludeAssignmentId);
-    if (load > peak) peak = load;
-  });
-  return peak;
+  return calculatePeakLoad(
+    db.assignments,
+    db.projects,
+    employeeId,
+    startDate,
+    endDate,
+    excludeAssignmentId,
+  );
 }
 
 /**

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { ClipboardList, Info } from 'lucide-react';
+import { CheckCheck, ClipboardList, Info } from 'lucide-react';
 import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { TimesheetCell, TimesheetCode, TimesheetStatus } from '@/shared/types';
@@ -56,6 +56,7 @@ export function TimesheetPage() {
   const [editor, setEditor] = useState<CellEditorState | null>(null);
   const [editorCode, setEditorCode] = useState<TimesheetCode>('Я');
   const [editorHours, setEditorHours] = useState(8);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const isEmployee = user?.role === 'employee';
   const canEdit = can(user?.role, 'timesheet:edit');
@@ -106,6 +107,25 @@ export function TimesheetPage() {
     onError: (error) => toast.error('Не удалось обновить статус', getErrorMessage(error)),
   });
 
+  const bulkApproveMutation = useMutation({
+    mutationFn: async (employeeIds: string[]) => {
+      const results = await Promise.allSettled(
+        employeeIds.map((employeeId) => api.timesheet.setStatus(employeeId, month, 'approved')),
+      );
+      return {
+        total: employeeIds.length,
+        ok: results.filter((result) => result.status === 'fulfilled').length,
+      };
+    },
+    onSuccess: ({ total, ok }) => {
+      queryClient.invalidateQueries({ queryKey: ['timesheet'] });
+      queryClient.invalidateQueries({ queryKey: ['audit'] });
+      setBulkOpen(false);
+      if (ok === total) toast.success(`Утверждено табелей: ${ok}`);
+      else toast.error(`Утверждено ${ok} из ${total}. Остальные не удалось утвердить.`);
+    },
+  });
+
   useEffect(() => {
     if (!editor) return;
     setEditorCode(editor.currentCode);
@@ -123,13 +143,29 @@ export function TimesheetPage() {
     });
   }, [query.data?.rows, debouncedSearch, employeeById]);
 
+  const approvableRows = rows.filter(
+    (row) =>
+      canApproveRow(row.employeeId) &&
+      row.status !== 'approved' &&
+      (row.employeeId !== user?.employeeId || user?.role === 'admin'),
+  );
+
   return (
     <div>
       <PageHeader
         eyebrow="Учёт времени"
         title="Табель"
         description="Отметки присутствия по дням месяца, нормы и итоги"
-        actions={<MonthSwitcher value={month} onChange={setMonth} />}
+        actions={
+          <>
+            {canApprove && approvableRows.length > 0 ? (
+              <Button variant="outline" onClick={() => setBulkOpen(true)}>
+                <CheckCheck /> Утвердить все ({approvableRows.length})
+              </Button>
+            ) : null}
+            <MonthSwitcher value={month} onChange={setMonth} />
+          </>
+        }
       />
 
       {!isCalendarYearSupported(Number(month.slice(0, 4))) ? (
@@ -378,6 +414,41 @@ export function TimesheetPage() {
           </div>
         </Card>
       )}
+
+      <Dialog
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        title="Утвердить табели"
+        description={`Месяц ${month}`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setBulkOpen(false)}>
+              Отмена
+            </Button>
+            <Button
+              loading={bulkApproveMutation.isPending}
+              onClick={() =>
+                bulkApproveMutation.mutate(approvableRows.map((row) => row.employeeId))
+              }
+            >
+              Утвердить ({approvableRows.length})
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-muted">
+          <p>
+            Будут утверждены табели сотрудников:{' '}
+            <span className="font-medium text-fg">{approvableRows.length}</span>. Уже утверждённые,
+            собственный табель и сотрудники вне вашей зоны не затрагиваются.
+          </p>
+          <p className="rounded-lg bg-surface-2 p-3 text-[11px]">
+            После утверждения отметки блокируются. Вернуть табель в «Черновик» или «На проверке»
+            можно вручную, если нужно внести правки.
+          </p>
+        </div>
+      </Dialog>
 
       <Dialog
         open={Boolean(editor)}

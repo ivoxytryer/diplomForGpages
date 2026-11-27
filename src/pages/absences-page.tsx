@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { CalendarDays, CalendarPlus, Check, List, RotateCcw, X } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Check, CheckCheck, List, RotateCcw, X } from 'lucide-react';
 import { api } from '@/shared/api';
 import { getErrorMessage } from '@/shared/api/client';
 import type { Absence, AbsenceStatus } from '@/shared/types';
@@ -28,6 +28,7 @@ import { Button } from '@/shared/ui/button';
 import { Tabs } from '@/shared/ui/tabs';
 import { Select } from '@/shared/ui/primitives';
 import { Table, TBody, TD, TH, THead, TR } from '@/shared/ui/table';
+import { Dialog } from '@/shared/ui/overlay';
 import { useToast } from '@/shared/ui/toast';
 
 const absenceChipTone: Record<string, string> = {
@@ -62,6 +63,7 @@ export function AbsencesPage() {
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [formOpen, setFormOpen] = useState(false);
   const [approvalTarget, setApprovalTarget] = useState<Absence | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const isEmployee = user?.role === 'employee';
   const canApprove = can(user?.role, 'absences:approve');
@@ -105,6 +107,31 @@ export function AbsencesPage() {
     setApprovalTarget(absence);
   };
 
+  const bulkApproveMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.absences.setStatus(id, 'approved')),
+      );
+      return {
+        total: ids.length,
+        ok: results.filter((result) => result.status === 'fulfilled').length,
+      };
+    },
+    onSuccess: ({ total, ok }) => {
+      queryClient.invalidateQueries({ queryKey: ['absences'] });
+      queryClient.invalidateQueries({ queryKey: ['vacations'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['timesheet'] });
+      queryClient.invalidateQueries({ queryKey: ['employee'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['audit'] });
+      setBulkOpen(false);
+      if (ok === total) toast.success(`Согласовано заявок: ${ok}`);
+      else toast.error(`Согласовано ${ok} из ${total}. Остальные не удалось согласовать.`);
+    },
+  });
+
   const visibleEmployees = useMemo(() => {
     if (isEmployee) return employees.filter((employee) => employee.id === user?.employeeId);
     if (scopedDepartmentId) {
@@ -124,6 +151,17 @@ export function AbsencesPage() {
       return employee ? fullName(employee).toLowerCase().includes(term) : false;
     });
   }, [query.data, visibleIds, debouncedSearch, employeeById]);
+
+  // Массово согласуем только заявки без активных задач: если задачи есть,
+  // по каждой нужно решение «оставить/передать» — такие заявки идут по одной.
+  const bulkApprovable = absences.filter(
+    (absence) =>
+      absence.status === 'pending' &&
+      !absence.hasActiveTasks &&
+      canApproveAbsence(absence) &&
+      (absence.type !== 'sick' || canConfirmSick) &&
+      (absence.employeeId !== user?.employeeId || user?.role === 'admin'),
+  );
 
   const dates = datesOfMonth(month);
   const offset = (dayjs(`${month}-01`).day() + 6) % 7;
@@ -168,6 +206,11 @@ export function AbsencesPage() {
             ) : (
               <MonthSwitcher value={month} onChange={setMonth} />
             )}
+            {canApprove && bulkApprovable.length > 0 ? (
+              <Button variant="outline" onClick={() => setBulkOpen(true)}>
+                <CheckCheck /> Согласовать все ({bulkApprovable.length})
+              </Button>
+            ) : null}
             {canCreateAbsence ? (
               <Button onClick={() => setFormOpen(true)}>
                 <CalendarPlus /> Новая заявка
@@ -444,6 +487,41 @@ export function AbsencesPage() {
           </div>
         </Card>
       )}
+
+      <Dialog
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        title="Согласовать заявки"
+        description={allMonths ? 'За всё время' : monthLabel(month)}
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setBulkOpen(false)}>
+              Отмена
+            </Button>
+            <Button
+              loading={bulkApproveMutation.isPending}
+              onClick={() => bulkApproveMutation.mutate(bulkApprovable.map((absence) => absence.id))}
+            >
+              Согласовать ({bulkApprovable.length})
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-muted">
+          <p>
+            Будет согласовано заявок:{' '}
+            <span className="font-medium text-fg">{bulkApprovable.length}</span>.
+          </p>
+          <p className="rounded-lg bg-surface-2 p-3 text-[11px]">
+            Заявки с активными задачами сюда не входят: по ним нужно решить, оставить задачу
+            сотруднику или передать коллеге. Такие заявки согласуются по одной.
+          </p>
+          <p className="text-[11px]">
+            Заявки вне вашей зоны ответственности и собственные заявки не затрагиваются.
+          </p>
+        </div>
+      </Dialog>
 
       <AbsenceForm open={formOpen} onClose={() => setFormOpen(false)} employees={formEmployees} />
       <AbsenceApprovalDialog

@@ -6,7 +6,7 @@ import type { Assignment, AssignmentPayload } from '@/shared/types';
 import { useLookups } from '@/shared/hooks/use-lookups';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { findEmployeeAbsenceNote, formatAbsenceNote } from '@/shared/lib/absences';
-import { ADMIN_LOAD_LIMIT, calculateLoad, remainingCapacity } from '@/shared/lib/workload';
+import { ADMIN_LOAD_LIMIT, calculatePeakLoad, remainingCapacity } from '@/shared/lib/workload';
 import { cn, employeeOptionLabel, fullName, todayISO } from '@/shared/lib/utils';
 import { Dialog } from '@/shared/ui/overlay';
 import { Button } from '@/shared/ui/button';
@@ -68,25 +68,34 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
   const fixedEmployee = assignment?.employeeId ?? employeeId;
   const today = todayISO();
 
-  // Активная загрузка на дату начала назначения: завершённые и будущие
-  // назначения не должны раздувать «текущую» загрузку.
-  const loadDate = values.startDate || today;
+  // Пик загрузки за период назначения: совпадает с проверкой на сервере,
+  // поэтому будущие пересекающиеся назначения тоже учитываются.
+  const loadStart = values.startDate || today;
   const loads = useMemo(() => {
     const map = new Map<string, number>();
     for (const employee of employees) {
       map.set(
         employee.id,
-        calculateLoad(
+        calculatePeakLoad(
           assignmentsQuery.data ?? [],
           projectById,
           employee.id,
-          loadDate,
+          loadStart,
+          values.endDate,
           employee.id === assignment?.employeeId ? assignment?.id : undefined,
         ),
       );
     }
     return map;
-  }, [assignmentsQuery.data, projectById, employees, loadDate, assignment?.employeeId, assignment?.id]);
+  }, [
+    assignmentsQuery.data,
+    projectById,
+    employees,
+    loadStart,
+    values.endDate,
+    assignment?.employeeId,
+    assignment?.id,
+  ]);
 
   const filteredEmployees = useMemo(
     () =>
@@ -160,6 +169,7 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
   const valid = Boolean(
     values.projectId &&
       values.employeeId &&
+      values.startDate &&
       values.allocation >= 0 &&
       values.allocation <= 100 &&
       projectedLoad <= loadLimit &&
@@ -177,17 +187,17 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
     ? null
     : overLimit
       ? isEditing
-        ? `Без этого назначения ${currentLoad}% · с текущим значением ${projectedLoad}% · лимит ${loadLimit}%. Уменьшите до ${remaining}% или меньше, чтобы сохранить.`
-        : `Загрузка сейчас ${currentLoad}% · после назначения ${projectedLoad}% · лимит ${loadLimit}%. Свободно ${remaining}%.`
+        ? `Пик без этого назначения ${currentLoad}% · с текущим значением ${projectedLoad}% · лимит ${loadLimit}%. Уменьшите до ${remaining}% или меньше, чтобы сохранить.`
+        : `Пик ${currentLoad}% · после назначения ${projectedLoad}% · лимит ${loadLimit}%. Свободно ${remaining}%.`
       : isEditing
-        ? `Без этого назначения ${currentLoad}% · после изменения ${projectedLoad}%${
+        ? `Пик без этого назначения ${currentLoad}% · после изменения ${projectedLoad}%${
             projectedLoad > 100 ? overloadSuffix : ''
           }`
         : currentLoad >= 100 && !isAdmin
-          ? `Сотрудник уже загружен на ${currentLoad}% — свободного времени нет`
+          ? `Пик загрузки ${currentLoad}% — свободного времени нет`
           : currentLoad >= 90 && !isAdmin
-            ? `Загрузка ${currentLoad}% · осталось ${remaining}% · можно дать только небольшую задачу`
-            : `Загрузка сейчас: ${currentLoad}% · после назначения: ${projectedLoad}%${
+            ? `Пик загрузки ${currentLoad}% · осталось ${remaining}% · можно дать только небольшую задачу`
+            : `Пик ${currentLoad}% · после назначения ${projectedLoad}%${
                 projectedLoad > 100
                   ? isAdmin
                     ? overloadSuffix
@@ -280,13 +290,13 @@ export function AssignmentForm({ open, onClose, projectId, employeeId, assignmen
                 const load = loads.get(employee.id) ?? 0;
                 const loadLabel =
                   load >= 100
-                    ? ` · загрузка ${load}%`
+                    ? ` · пик ${load}%`
                     : load >= 90
-                      ? ` · загрузка ${load}%, осталось ${remainingCapacity(load)}%`
+                      ? ` · пик ${load}%, осталось ${remainingCapacity(load)}%`
                       : load >= 80
-                        ? ` · высокая загрузка ${load}%`
+                        ? ` · высокий пик ${load}%`
                         : load > 0
-                          ? ` · загрузка ${load}%`
+                          ? ` · пик ${load}%`
                           : '';
                 const absence = absenceLabel(employee.id);
                 return (

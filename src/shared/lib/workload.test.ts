@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Assignment, Project } from '@/shared/types';
-import { calculateLoad, isAssignmentActive, remainingCapacity } from './workload';
+import { calculateLoad, calculatePeakLoad, isAssignmentActive, remainingCapacity } from './workload';
 
 const projects: Project[] = [
   {
@@ -59,5 +59,25 @@ describe('активная загрузка', () => {
     expect(isAssignmentActive(assignment({}), projects[0], '2026-11-24')).toBe(true);
     expect(isAssignmentActive(assignment({ endDate: '2026-11-01' }), projects[0], '2026-11-24')).toBe(false);
     expect(isAssignmentActive(assignment({}), projects[1], '2026-11-24')).toBe(false);
+  });
+});
+
+describe('пик загрузки за период', () => {
+  const list = [
+    assignment({ id: 'now', allocation: 40 }),
+    assignment({ id: 'future', allocation: 30, startDate: '2026-12-01' }),
+  ];
+
+  it('учитывает будущие пересекающиеся назначения', () => {
+    expect(calculatePeakLoad(list, projects, 'e1', '2026-11-24', null)).toBe(70);
+    expect(calculatePeakLoad(list, projects, 'e1', '2026-12-15', null)).toBe(70);
+  });
+
+  it('не учитывает будущий старт за пределами периода', () => {
+    expect(calculatePeakLoad(list, projects, 'e1', '2026-11-24', '2026-11-30')).toBe(40);
+  });
+
+  it('исключает редактируемое назначение', () => {
+    expect(calculatePeakLoad(list, projects, 'e1', '2026-11-24', null, 'now')).toBe(30);
   });
 });

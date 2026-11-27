@@ -110,6 +110,79 @@ test('manager: перегруз не подрезает проценты при 
   await expect(dialog.getByRole('button', { name: 'Сохранить' })).toBeEnabled();
 });
 
+test('admin: массовое утверждение табелей', async ({ page }) => {
+  await login(page, 'admin@hr.local');
+  await page.goto('/timesheet');
+
+  const bulk = page.getByRole('button', { name: /Утвердить все/ });
+  await expect(bulk).toBeVisible();
+  await bulk.click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Будут утверждены табели сотрудников')).toBeVisible();
+  await dialog.getByRole('button', { name: /Утвердить \(/ }).click();
+
+  await expect(page.getByText(/Утверждено табелей:/)).toBeVisible();
+});
+
+test('admin: массовое согласование отсутствий', async ({ page }) => {
+  await login(page, 'admin@hr.local');
+  await page.goto('/absences?scope=all');
+
+  const bulk = page.getByRole('button', { name: /Согласовать все/ });
+  await expect(bulk).toBeVisible();
+  await bulk.click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Будет согласовано заявок')).toBeVisible();
+  await dialog.getByRole('button', { name: /Согласовать \(/ }).click();
+
+  await expect(page.getByText(/Согласовано заявок:/)).toBeVisible();
+});
+
+test('admin: массовое добавление участников проекта', async ({ page }) => {
+  await login(page, 'admin@hr.local');
+  await page.goto('/projects/pr1');
+
+  await page.getByRole('button', { name: 'Нескольких' }).first().click();
+  const dialog = page.getByRole('dialog');
+  const boxes = dialog.locator('input[type=checkbox]:not([disabled])');
+  await expect(boxes.first()).toBeVisible();
+
+  await boxes.nth(0).check();
+  await boxes.nth(1).check();
+  const submit = dialog.getByRole('button', { name: /Добавить \(2\)/ });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+
+  await expect(page.getByText('Добавлено участников: 2')).toBeVisible();
+});
+
+test('admin: форма учитывает будущий пик загрузки', async ({ page }) => {
+  await login(page, 'admin@hr.local');
+  await page.goto('/workload');
+
+  const employee = 'Новиков Никита Михайлович';
+  const row = page.getByRole('row', { name: new RegExp(employee) }).first();
+
+  // Будущее назначение: сегодня загрузка 100%, с 15.12 станет 140%.
+  await row.getByTitle(/Миграция в облако · не назначен/).click();
+  const futureDialog = page.getByRole('dialog');
+  await futureDialog.getByLabel('Загрузка, %').fill('40');
+  await futureDialog.getByLabel('Дата начала').fill('2026-12-15');
+  await futureDialog.getByLabel('Причина перегруза *').fill('Проверка будущего пика');
+  await futureDialog.getByRole('button', { name: 'Сохранить' }).click();
+  await expect(futureDialog).toBeHidden();
+
+  // Новое назначение на сегодня даст 140% сразу и 180% после 15.12.
+  await row.getByTitle(/CRM-релиз 2.0 · не назначен/).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Загрузка, %').fill('40');
+
+  await expect(dialog.getByText(/Пик 140% · после назначения 180%/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Сохранить' })).toBeDisabled();
+});
+
 test('admin: орг-структура', async ({ page }) => {
   await login(page, 'admin@hr.local');
   await page.goto('/directory/structure');

@@ -22,6 +22,7 @@ import { projectStatusMeta } from '@/shared/lib/meta';
 import { formatDate, fullName, todayISO } from '@/shared/lib/utils';
 import { isAssignmentActive } from '@/shared/lib/workload';
 import { AssignmentForm } from '@/features/projects/assignment-form';
+import { BulkAssignmentDialog } from '@/features/projects/bulk-assignment-dialog';
 import { ProjectForm } from '@/features/projects/project-form';
 import { TaskForm } from '@/features/tasks/task-form';
 import { TaskList } from '@/features/tasks/task-list';
@@ -48,6 +49,7 @@ export function ProjectPage() {
   const { employeeById, departmentById } = useLookups();
   const [editOpen, setEditOpen] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [bulkAssignmentOpen, setBulkAssignmentOpen] = useState(false);
   const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
   const [taskOpen, setTaskOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
@@ -150,15 +152,20 @@ export function ProjectPage() {
               </Link>
             ) : null}
             {canManageTeam ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEditingAssignmentId(null);
-                  setAssignmentOpen(true);
-                }}
-              >
-                <Plus /> Добавить участника
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditingAssignmentId(null);
+                    setAssignmentOpen(true);
+                  }}
+                >
+                  <Plus /> Добавить участника
+                </Button>
+                <Button variant="outline" onClick={() => setBulkAssignmentOpen(true)}>
+                  <Users /> Нескольких
+                </Button>
+              </>
             ) : null}
             {canEditProject ? (
               <Button onClick={() => setEditOpen(true)}>
@@ -287,16 +294,25 @@ export function ProjectPage() {
             description={`${teamSize} участников · суммарная загрузка ${totalAllocation}%`}
             actions={
               canManageTeam ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setEditingAssignmentId(null);
-                    setAssignmentOpen(true);
-                  }}
-                >
-                  <Plus /> Участник
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingAssignmentId(null);
+                      setAssignmentOpen(true);
+                    }}
+                  >
+                    <Plus /> Участник
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setBulkAssignmentOpen(true)}
+                  >
+                    <Users /> Нескольких
+                  </Button>
+                </>
               ) : null
             }
           />
@@ -490,6 +506,11 @@ export function ProjectPage() {
         }}
         projectId={project.id}
         assignment={editingAssignment}
+      />
+      <BulkAssignmentDialog
+        open={bulkAssignmentOpen}
+        projectId={project.id}
+        onClose={() => setBulkAssignmentOpen(false)}
       />
 
       <TaskForm
