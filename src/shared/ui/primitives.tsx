@@ -9,6 +9,7 @@ import {
 import { AlertCircle, Inbox, Loader2, type LucideIcon } from 'lucide-react';
 import { cn, getInitials } from '@/shared/lib/utils';
 import type { Tone } from '@/shared/lib/meta';
+import { Button } from './button';
 
 interface FieldControlContextValue {
   id: string;
@@ -268,6 +269,14 @@ export function ErrorState({ message }: { message: string }) {
       <AlertCircle className="size-8 text-danger" />
       <p className="text-sm font-medium text-fg">Не удалось загрузить данные</p>
       <p className="max-w-sm text-xs text-muted">{message}</p>
+      <Button
+        variant="outline"
+        size="sm"
+        className="mt-2"
+        onClick={() => window.location.reload()}
+      >
+        Обновить страницу
+      </Button>
     </div>
   );
 }
