@@ -184,26 +184,38 @@ test('admin: форма учитывает будущий пик загрузк�
 });
 
 test('hr: уведомление → согласование → событие', async ({ page }) => {
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Сотрудник создаёт заявку — у HR должно появиться уведомление.
+  await login(page, 'employee@hr.local');
+  await page.goto('/absences');
+  await page.getByRole('button', { name: /Новая заявка/ }).click();
+  const form = page.getByRole('dialog');
+  await form.getByLabel('Тип отсутствия').selectOption('unpaid');
+  await form.getByLabel('Дата начала *').fill(today);
+  await form.getByLabel('Дата окончания *').fill(today);
+  await form.getByLabel('Комментарий').fill('Проверка уведомлений HR');
+  await form.getByRole('button', { name: 'Отправить', exact: true }).click();
+  await expect(page.getByText('Заявка создана', { exact: true })).toBeVisible();
+
+  await logout(page);
   await login(page, 'hr@hr.local');
 
   await page.getByRole('button', { name: /Уведомления, непрочитанных/ }).click();
   await expect(page.getByText('Новая заявка на согласование').first()).toBeVisible();
-  await expect(page.getByText(/Фёдорова Екатерина/).first()).toBeVisible();
+  await expect(page.getByText(/Попова Анна/).first()).toBeVisible();
   await page.mouse.click(20, 200);
 
   await page.goto('/absences?status=pending&scope=all');
-  const row = page
-    .getByRole('row', { name: /Фёдорова Екатерина Владимировна/ })
-    .first();
+  const row = page.locator('tr', { hasText: 'Проверка уведомлений HR' }).first();
   await row.getByTitle('Согласовать').click();
 
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByText('Согласование отсутствия')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Согласовать' }).click();
-  await expect(page.getByText('Отсутствие согласовано')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Согласовать', exact: true }).click();
+  await expect(page.getByText('Отсутствие согласовано', { exact: true })).toBeVisible();
 
   await page.goto('/events');
-  await expect(page.getByText(/Фёдорова Екатерина/).first()).toBeVisible();
+  await expect(page.getByText(/Попова Анна/).first()).toBeVisible();
 });
 
 test('admin: орг-структура', async ({ page }) => {

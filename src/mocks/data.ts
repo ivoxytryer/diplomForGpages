@@ -9,7 +9,6 @@ import type {
   Employee,
   EmployeeStatus,
   HrEvent,
-  Notification,
   Position,
   Project,
   ProjectTask,
@@ -19,7 +18,7 @@ import type {
 } from '@/shared/types';
 import { formatDate } from '@/shared/lib/utils';
 import { absenceDayBreakdown } from '@/shared/lib/absences';
-import { absenceEventTitle, absenceEventType, absenceTypeMeta } from '@/shared/lib/meta';
+import { absenceEventTitle, absenceEventType } from '@/shared/lib/meta';
 import { hashPassword } from './password';
 
 const DEMO_PASSWORD = 'demo1234';
@@ -839,50 +838,6 @@ function seedVacationBalances(employees: Employee[]): VacationBalance[] {
     }));
 }
 
-function seedNotifications(employees: Employee[], absences: Absence[]): Notification[] {
-  const notifications: Notification[] = [];
-  const pending = absences.filter((absence) => absence.status === 'pending');
-
-  // На каждую ожидающую заявку — непрочитанное уведомление HR и администратору,
-  // чтобы демо-сценарий «заявка → уведомление → согласование → событие»
-  // работал сразу после сброса демо-данных.
-  pending.forEach((absence, index) => {
-    const employee = employees.find((item) => item.id === absence.employeeId);
-    if (!employee) return;
-    const body = `${employee.lastName} ${employee.firstName} — ${absenceTypeMeta[
-      absence.type
-    ].label.toLowerCase()} ${formatDate(absence.startDate)} — ${formatDate(absence.endDate)}`;
-    for (const [userId, title] of [
-      ['u2', 'Новая заявка на согласование'],
-      ['u1', 'Заявка ждёт согласования'],
-    ] as const) {
-      notifications.push({
-        id: `n${String(notifications.length + 1).padStart(3, '0')}`,
-        userId,
-        type: 'absence_request',
-        title,
-        body,
-        link: '/absences?status=pending&scope=all',
-        createdAt: now.subtract(30 + index * 5, 'minute').toISOString(),
-        readAt: null,
-      });
-    }
-  });
-
-  notifications.push({
-    id: `n${String(notifications.length + 1).padStart(3, '0')}`,
-    userId: 'u3',
-    type: 'task_completed',
-    title: 'Задача выполнена',
-    body: 'Анна Попова закрыла «Обновить документацию API»',
-    link: '/tasks',
-    createdAt: now.subtract(1, 'day').toISOString(),
-    readAt: null,
-  });
-
-  return notifications;
-}
-
 function seedAudit(): AuditEntry[] {
   return [
     {
@@ -959,7 +914,7 @@ export function createSeed(): Db {
     vacationBalances: seedVacationBalances(employees),
     events: seedEvents(employees, absences),
     users,
-    notifications: seedNotifications(employees, absences),
+    notifications: [],
     audit: seedAudit(),
     timesheetOverrides: {},
     timesheetStatuses,

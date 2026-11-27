@@ -576,6 +576,19 @@ describe('отсутствия и статус сотрудника', () => {
 
 describe('уведомления и остатки отпусков', () => {
   it('отдаёт уведомления пользователя и отмечает прочитанными', async () => {
+    const employee = await login('employee@hr.local');
+    const date = dayjs().add(6, 'month').startOf('month').add(3, 'day').format('YYYY-MM-DD');
+    expect(
+      (
+        await call(
+          'POST',
+          '/absences',
+          { employeeId: 'e004', type: 'unpaid', startDate: date, endDate: date },
+          employee.token,
+        )
+      ).status,
+    ).toBe(201);
+
     const hr = await login('hr@hr.local');
     const list = asArray((await call('GET', '/notifications', undefined, hr.token)).data);
     expect(list.length).toBeGreaterThan(0);
