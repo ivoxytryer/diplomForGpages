@@ -2,32 +2,31 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { api } from '@/shared/api';
+import { getErrorMessage } from '@/shared/api/client';
 import { useAuthStore } from './auth-store';
 import type { Role } from '@/shared/types';
+import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/primitives';
 
 export function RequireAuth() {
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
-  const logout = useAuthStore((state) => state.logout);
   const location = useLocation();
 
   const me = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: api.auth.me,
     enabled: Boolean(token),
-    retry: false,
   });
 
   useEffect(() => {
     if (me.data) setUser(me.data);
   }, [me.data, setUser]);
 
-  useEffect(() => {
-    if (me.isError) logout();
-  }, [me.isError, logout]);
-
+  // Ошибку 401 обрабатывает интерцептор API: он чистит сессию и уводит на логин.
+  // Сетевой сбой или временная недоступность мок-API не должны разлогинивать:
+  // иначе после сворачивания вкладки пользователя выбрасывает на логин.
   if (!token) return <Navigate to="/login" replace />;
   if (!user && me.isLoading) {
     return (
@@ -36,7 +35,30 @@ export function RequireAuth() {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    if (me.isError) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-bg p-6">
+          <div className="w-full max-w-md border border-border bg-surface p-6 text-fg">
+            <h1 className="text-lg font-semibold">Не удалось проверить сессию</h1>
+            <p className="mt-2 text-sm text-muted">{getErrorMessage(me.error)}</p>
+            <p className="mt-2 text-xs text-muted">
+              Сессия сохранена. Проверьте соединение и попробуйте ещё раз.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <Button onClick={() => me.refetch()} loading={me.isFetching}>
+                Повторить
+              </Button>
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Обновить страницу
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return <Navigate to="/login" replace />;
+  }
 
   if (user.mustChangePassword && location.pathname !== '/change-password') {
     return <Navigate to="/change-password" replace />;
