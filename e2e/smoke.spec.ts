@@ -183,6 +183,29 @@ test('admin: форма учитывает будущий пик загрузк�
   await expect(dialog.getByRole('button', { name: 'Сохранить' })).toBeDisabled();
 });
 
+test('hr: уведомление → согласование → событие', async ({ page }) => {
+  await login(page, 'hr@hr.local');
+
+  await page.getByRole('button', { name: /Уведомления, непрочитанных/ }).click();
+  await expect(page.getByText('Новая заявка на согласование').first()).toBeVisible();
+  await expect(page.getByText(/Фёдорова Екатерина/).first()).toBeVisible();
+  await page.mouse.click(20, 200);
+
+  await page.goto('/absences?status=pending&scope=all');
+  const row = page
+    .getByRole('row', { name: /Фёдорова Екатерина Владимировна/ })
+    .first();
+  await row.getByTitle('Согласовать').click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Согласование отсутствия')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Согласовать' }).click();
+  await expect(page.getByText('Отсутствие согласовано')).toBeVisible();
+
+  await page.goto('/events');
+  await expect(page.getByText(/Фёдорова Екатерина/).first()).toBeVisible();
+});
+
 test('admin: орг-структура', async ({ page }) => {
   await login(page, 'admin@hr.local');
   await page.goto('/directory/structure');
