@@ -394,6 +394,20 @@ test('диалоги: focus trap и Escape', async ({ page }) => {
   await expect(trigger).toBeFocused();
 });
 
+test('без service worker показывает ошибку среды, а не 405', async ({ browser }) => {
+  const context = await browser.newContext({
+    serviceWorkers: 'block',
+    baseURL: 'http://localhost:4173',
+  });
+  const page = await context.newPage();
+  await page.goto('/login');
+
+  await expect(page.getByText('Демо-среда не загрузилась')).toBeVisible();
+  await expect(page.getByLabel('Email', { exact: true })).toHaveCount(0);
+
+  await context.close();
+});
+
 test('мобильная ширина: нет горизонтального переполнения', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page, 'admin@hr.local');
